@@ -1,7 +1,7 @@
 .tmp.driveupload
 search_history.json
-state
-request
+state.json
+request.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
