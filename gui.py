@@ -49,6 +49,7 @@ class SongFolderPlayerGUI:
         # Apply saved volume
         self._volume_var.set(self.state.volume)
         self._player.set_volume(self.state.volume)
+        self._volume_level_label.config(text=str(self.state.volume))
 
         # Start progress bar update loop
         self._update_progress()
@@ -177,6 +178,13 @@ class SongFolderPlayerGUI:
 
         # Volume slider (on the right)
         self._volume_var = tk.IntVar(value=100)
+
+        # Volume level label (shows numeric value)
+        self._volume_level_label = ttk.Label(
+            control_frame, text="100", font=("Consolas", 9), width=3
+        )
+        self._volume_level_label.pack(side=tk.RIGHT)
+
         self._volume_slider = ttk.Scale(
             control_frame,
             variable=self._volume_var,
@@ -187,7 +195,7 @@ class SongFolderPlayerGUI:
             command=self._on_volume_change,
             takefocus=False,
         )
-        self._volume_slider.pack(side=tk.RIGHT)
+        self._volume_slider.pack(side=tk.RIGHT, padx=(0, 5))
         self._volume_slider.bind("<ButtonPress-1>", self._on_volume_click)
 
         ttk.Label(control_frame, text="Vol:").pack(side=tk.RIGHT, padx=(10, 5))
@@ -236,6 +244,8 @@ class SongFolderPlayerGUI:
         self.root.bind("<Home>", lambda e: self._restart_current())
         self.root.bind("<Left>", lambda e: self._seek_relative(-5))
         self.root.bind("<Right>", lambda e: self._seek_relative(5))
+        self.root.bind("/", lambda e: self._adjust_volume(-5))
+        self.root.bind("*", lambda e: self._adjust_volume(5))
 
     def _update_recent_combo(self) -> None:
         """Update the recent folders dropdown."""
@@ -431,6 +441,7 @@ class SongFolderPlayerGUI:
         volume = int(float(value))
         self._player.set_volume(volume)
         self.state.volume = volume
+        self._volume_level_label.config(text=str(volume))
 
     def _on_volume_click(self, event: tk.Event) -> None:
         """Handle click on volume slider to jump to position.
@@ -445,6 +456,20 @@ class SongFolderPlayerGUI:
             self._volume_var.set(volume)
             self._player.set_volume(volume)
             self.state.volume = volume
+            self._volume_level_label.config(text=str(volume))
+
+    def _adjust_volume(self, delta: int) -> None:
+        """Adjust volume by a relative amount.
+
+        Args:
+            delta: Amount to adjust volume by (positive or negative).
+        """
+        current = self._volume_var.get()
+        new_volume = max(0, min(100, current + delta))
+        self._volume_var.set(new_volume)
+        self._player.set_volume(new_volume)
+        self.state.volume = new_volume
+        self._volume_level_label.config(text=str(new_volume))
 
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""
