@@ -124,6 +124,22 @@ class VLCPlayer:
         """
         return self._player.get_position()
 
+    def get_volume(self) -> int:
+        """Get current volume level.
+
+        Returns:
+            Volume level from 0 to 100.
+        """
+        return self._player.audio_get_volume()
+
+    def set_volume(self, volume: int) -> None:
+        """Set volume level.
+
+        Args:
+            volume: Volume level from 0 to 100.
+        """
+        self._player.audio_set_volume(max(0, min(100, volume)))
+
     def release(self) -> None:
         """Release VLC resources."""
         self._player.stop()

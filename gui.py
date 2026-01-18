@@ -46,8 +46,15 @@ class SongFolderPlayerGUI:
         self._create_widgets()
         self._bind_events()
 
+        # Apply saved volume
+        self._volume_var.set(self.state.volume)
+        self._player.set_volume(self.state.volume)
+
         # Start progress bar update loop
         self._update_progress()
+
+        # Start periodic save timer (every 5 seconds)
+        self._start_periodic_save()
 
         # Load last folder if available
         if self.state.recent_folders:
@@ -167,6 +174,23 @@ class SongFolderPlayerGUI:
             control_frame, text="Next", command=self._play_next, takefocus=False
         )
         self._next_btn.pack(side=tk.LEFT)
+
+        # Volume slider (on the right)
+        self._volume_var = tk.IntVar(value=100)
+        self._volume_slider = ttk.Scale(
+            control_frame,
+            variable=self._volume_var,
+            from_=0,
+            to=100,
+            orient=tk.HORIZONTAL,
+            length=100,
+            command=self._on_volume_change,
+            takefocus=False,
+        )
+        self._volume_slider.pack(side=tk.RIGHT)
+        self._volume_slider.bind("<ButtonPress-1>", self._on_volume_click)
+
+        ttk.Label(control_frame, text="Vol:").pack(side=tk.RIGHT, padx=(10, 5))
 
         # Now playing label
         self._now_playing_label = ttk.Label(main_frame, text="", font=("Arial", 9))
@@ -398,6 +422,30 @@ class SongFolderPlayerGUI:
             self._playlist_state.loop_enabled = self._loop_var.get()
             self._save_state()
 
+    def _on_volume_change(self, value: str) -> None:
+        """Handle volume slider change.
+
+        Args:
+            value: New volume value as string (from Scale widget).
+        """
+        volume = int(float(value))
+        self._player.set_volume(volume)
+        self.state.volume = volume
+
+    def _on_volume_click(self, event: tk.Event) -> None:
+        """Handle click on volume slider to jump to position.
+
+        Args:
+            event: The mouse event.
+        """
+        widget_width = event.widget.winfo_width()
+        if widget_width > 0:
+            position = max(0.0, min(1.0, event.x / widget_width))
+            volume = int(position * 100)
+            self._volume_var.set(volume)
+            self._player.set_volume(volume)
+            self.state.volume = volume
+
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""
         selection = self._playlist_listbox.curselection()
@@ -422,8 +470,9 @@ class SongFolderPlayerGUI:
         file_index = self._get_file_index_for_display_position(display_pos)
         file_path = self._media_files[file_index]
 
-        # Update state
+        # Update state (reset position since we're starting fresh)
         self._playlist_state.current_index = display_pos
+        self._playlist_state.playback_position_ms = 0
         self._save_state()
 
         # Play the file
@@ -440,6 +489,7 @@ class SongFolderPlayerGUI:
         """Load the current track into VLC but start paused.
 
         This is used on startup so keyboard shortcuts work immediately.
+        Restores the saved playback position if available.
         """
         if not self._media_files or not self._playlist_state:
             return
@@ -457,6 +507,11 @@ class SongFolderPlayerGUI:
 
         # Schedule pause after VLC has started (needs small delay)
         self.root.after(100, self._player.pause)
+
+        # Seek to saved position after VLC has loaded (needs more delay)
+        saved_position = self._playlist_state.playback_position_ms
+        if saved_position > 0:
+            self.root.after(200, lambda: self._player.set_time(saved_position))
 
     def _play_next(self) -> None:
         """Play the next track."""
@@ -630,6 +685,24 @@ class SongFolderPlayerGUI:
             self._on_state_change()
         else:
             save_state(self.state)
+
+    def _start_periodic_save(self) -> None:
+        """Start the periodic save timer."""
+        self._periodic_save()
+
+    def _periodic_save(self) -> None:
+        """Periodically save playback position and volume to state."""
+        # Update playback position from player
+        if self._playlist_state and self._player.get_current_file():
+            current_ms = self._player.get_time()
+            if current_ms >= 0:
+                self._playlist_state.playback_position_ms = current_ms
+
+        # Save state to disk
+        self._save_state()
+
+        # Schedule next save (every 5 seconds)
+        self.root.after(5000, self._periodic_save)
 
     def _on_close(self) -> None:
         """Handle window close event."""

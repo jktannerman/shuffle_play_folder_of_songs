@@ -20,6 +20,7 @@ class PlaylistState:
     current_index: int = 0
     shuffle_order: list[int] | None = None
     loop_enabled: bool = True
+    playback_position_ms: int = 0  # Position within current track
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -27,6 +28,7 @@ class PlaylistState:
             "current_index": self.current_index,
             "shuffle_order": self.shuffle_order,
             "loop_enabled": self.loop_enabled,
+            "playback_position_ms": self.playback_position_ms,
         }
 
     @classmethod
@@ -36,6 +38,7 @@ class PlaylistState:
             current_index=data.get("current_index", 0),
             shuffle_order=data.get("shuffle_order"),
             loop_enabled=data.get("loop_enabled", True),
+            playback_position_ms=data.get("playback_position_ms", 0),
         )
 
 
@@ -45,6 +48,7 @@ class AppState:
 
     recent_folders: list[str] = field(default_factory=list)
     playlists: dict[str, PlaylistState] = field(default_factory=dict)
+    volume: int = 100  # Global volume level (0-100)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -53,6 +57,7 @@ class AppState:
             "playlists": {
                 folder: state.to_dict() for folder, state in self.playlists.items()
             },
+            "volume": self.volume,
         }
 
     @classmethod
@@ -64,7 +69,8 @@ class AppState:
             folder: PlaylistState.from_dict(state)
             for folder, state in playlists_data.items()
         }
-        return cls(recent_folders=recent_folders, playlists=playlists)
+        volume = data.get("volume", 100)
+        return cls(recent_folders=recent_folders, playlists=playlists, volume=volume)
 
     def add_recent_folder(self, folder_path: str) -> None:
         """Add a folder to the recent folders list.
