@@ -65,6 +65,7 @@ FEATURES
 5. PER-PLAYLIST STATE
    Each folder remembers independently:
    - Current track position
+   - Playback position within track (resumes where you left off)
    - Shuffle mode on/off
    - Shuffle order (preserved across sessions)
    - Loop setting
@@ -75,18 +76,22 @@ FEATURES
    - Most recent folder auto-loads on startup
 
 7. SESSION PERSISTENCE
-   State is saved automatically on:
-   - Folder opened
-   - Track changed (manual or automatic)
-   - Shuffle toggled or reshuffled
-   - Loop toggled
-   - Application close
+   State is saved automatically:
+   - Every 5 seconds (playback position, volume, zoom)
+   - On folder opened
+   - On track changed (manual or automatic)
+   - On shuffle toggled or reshuffled
+   - On loop toggled
+   - On application close
 
    State file uses atomic writes (temp file + rename) for safety.
 
 8. AUTO-RESUME ON STARTUP
    - Loads most recent folder automatically
    - Loads current track into VLC (paused)
+   - Seeks to saved playback position
+   - Restores saved volume level
+   - Restores saved zoom level
    - Keyboard shortcuts work immediately without clicking
 
 9. PROGRESS BAR
@@ -96,15 +101,34 @@ FEATURES
    - Drag to scrub through track
    - Updates every 250ms
 
-10. KEYBOARD SHORTCUTS (Global)
+10. VOLUME CONTROL
+    - Slider with numeric display (0-100)
+    - Click slider to jump to position
+    - Drag slider to adjust
+    - Keyboard shortcuts for quick adjustment
+    - Volume level persisted across sessions
+
+11. UI ZOOM
+    - Adjustable font size for all UI elements
+    - Zoom range: 50% to 200%
+    - Default zoom: 120%
+    - Zoom level persisted across sessions
+
+12. KEYBOARD SHORTCUTS (Global)
     Space       - Pause/unpause current track
     End         - Skip to next track
     Home        - Restart current track from beginning
     Left Arrow  - Seek backward 5 seconds
     Right Arrow - Seek forward 5 seconds
     Enter       - Play selected track (when listbox focused)
+    /           - Decrease volume by 5%
+    *           - Increase volume by 5%
+    Ctrl++      - Zoom in (increase UI font size)
+    Ctrl+=      - Zoom in (alternative)
+    Ctrl+-      - Zoom out (decrease UI font size)
+    Ctrl+0      - Reset zoom to 100%
 
-11. VLC INTEGRATION
+13. VLC INTEGRATION
     - Media plays in separate VLC window
     - Automatic advancement to next track on completion
     - Respects loop/stop setting at playlist end
@@ -127,7 +151,7 @@ GUI LAYOUT
 |       ...                                        |
 |                                                  |
 +--------------------------------------------------+
-| [Play] [Stop] [Previous] [Next]                  |
+| [Play] [Stop] [Previous] [Next]    Vol: [==] 75  |
 +--------------------------------------------------+
 | Now playing: track1.mp3                          |
 +--------------------------------------------------+
@@ -137,6 +161,7 @@ GUI LAYOUT
 - ">>" marker indicates currently playing track
 - Selected track highlighted in listbox
 - Double-click or Enter to play selected track
+- Volume slider shows numeric value (0-100)
 
 
 STATE FILE FORMAT (state.json)
@@ -150,18 +175,25 @@ STATE FILE FORMAT (state.json)
     "C:\\Music\\Album1": {
       "current_index": 3,
       "shuffle_order": [2, 0, 4, 1, 3],
-      "loop_enabled": true
+      "loop_enabled": true,
+      "playback_position_ms": 45230
     },
     "C:\\Music\\Album2": {
       "current_index": 0,
       "shuffle_order": null,
-      "loop_enabled": false
+      "loop_enabled": false,
+      "playback_position_ms": 0
     }
-  }
+  },
+  "volume": 75,
+  "zoom_level": 1.2
 }
 
 - shuffle_order: null = straight mode, array = shuffle mode
 - current_index: position in display order (shuffle or straight)
+- playback_position_ms: position within current track (milliseconds)
+- volume: global volume level (0-100)
+- zoom_level: UI zoom multiplier (0.5-2.0, default 1.2)
 
 
 NOTES
@@ -175,7 +207,17 @@ NOTES
 
 VERSION HISTORY
 ---------------
-Initial implementation - January 2026
+v1.1 - January 2026
+- Playback position persistence (resumes where you left off per-playlist)
+- Volume persistence across sessions
+- Volume keyboard shortcuts (/ and * for -5%/+5%)
+- Volume level numeric display next to slider
+- UI zoom functionality (Ctrl++, Ctrl+-, Ctrl+0)
+- Zoom level persistence across sessions
+- Default zoom set to 120%
+- Periodic auto-save every 5 seconds
+
+v1.0 - January 2026 (Initial implementation)
 - Core playback functionality
 - Shuffle/loop modes with per-playlist state
 - Persistent state across sessions

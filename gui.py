@@ -38,6 +38,16 @@ class SongFolderPlayerGUI:
         self._loading: bool = False  # Flag to prevent callbacks during load
         self._seeking: bool = False  # Flag to prevent progress updates while seeking
 
+        # Zoom level (1.0 = 100%)
+        self._zoom_level: float = 1.0
+        self._base_font_sizes: dict[str, int] = {
+            "playlist": 10,
+            "ui": 9,
+        }
+
+        # ttk style for theming
+        self._style = ttk.Style()
+
         # VLC player with end callback
         self._player = VLCPlayer(on_end_callback=self._on_track_end)
 
@@ -50,6 +60,10 @@ class SongFolderPlayerGUI:
         self._volume_var.set(self.state.volume)
         self._player.set_volume(self.state.volume)
         self._volume_level_label.config(text=str(self.state.volume))
+
+        # Apply saved zoom level
+        self._zoom_level = self.state.zoom_level
+        self._apply_zoom()
 
         # Start progress bar update loop
         self._update_progress()
@@ -246,6 +260,12 @@ class SongFolderPlayerGUI:
         self.root.bind("<Right>", lambda e: self._seek_relative(5))
         self.root.bind("/", lambda e: self._adjust_volume(-5))
         self.root.bind("*", lambda e: self._adjust_volume(5))
+
+        # Zoom shortcuts (Ctrl++ and Ctrl+-)
+        self.root.bind("<Control-plus>", lambda e: self._zoom_in())
+        self.root.bind("<Control-equal>", lambda e: self._zoom_in())  # Ctrl+= (no shift)
+        self.root.bind("<Control-minus>", lambda e: self._zoom_out())
+        self.root.bind("<Control-0>", lambda e: self._zoom_reset())  # Reset to 100%
 
     def _update_recent_combo(self) -> None:
         """Update the recent folders dropdown."""
@@ -470,6 +490,46 @@ class SongFolderPlayerGUI:
         self._player.set_volume(new_volume)
         self.state.volume = new_volume
         self._volume_level_label.config(text=str(new_volume))
+
+    def _zoom_in(self) -> None:
+        """Increase zoom level by 10%."""
+        self._zoom_level = min(2.0, self._zoom_level + 0.1)
+        self._apply_zoom()
+
+    def _zoom_out(self) -> None:
+        """Decrease zoom level by 10%."""
+        self._zoom_level = max(0.5, self._zoom_level - 0.1)
+        self._apply_zoom()
+
+    def _zoom_reset(self) -> None:
+        """Reset zoom level to 100%."""
+        self._zoom_level = 1.0
+        self._apply_zoom()
+
+    def _apply_zoom(self) -> None:
+        """Apply current zoom level to all fonts."""
+        # Save to state
+        self.state.zoom_level = self._zoom_level
+
+        playlist_size = int(self._base_font_sizes["playlist"] * self._zoom_level)
+        ui_size = int(self._base_font_sizes["ui"] * self._zoom_level)
+
+        # Update playlist listbox font (tk widget)
+        self._playlist_listbox.config(font=("Consolas", playlist_size))
+
+        # Update ttk widget fonts via styles
+        self._style.configure("TButton", font=("TkDefaultFont", ui_size))
+        self._style.configure("TLabel", font=("TkDefaultFont", ui_size))
+        self._style.configure("TCheckbutton", font=("TkDefaultFont", ui_size))
+        self._style.configure("TCombobox", font=("TkDefaultFont", ui_size))
+
+        # Update specific label fonts (these override the style)
+        self._volume_level_label.config(font=("Consolas", ui_size))
+        self._now_playing_label.config(font=("Arial", ui_size))
+        self._time_label.config(font=("Consolas", ui_size))
+
+        # Update combobox dropdown font
+        self.root.option_add("*TCombobox*Listbox.font", ("TkDefaultFont", ui_size))
 
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""

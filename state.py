@@ -49,6 +49,7 @@ class AppState:
     recent_folders: list[str] = field(default_factory=list)
     playlists: dict[str, PlaylistState] = field(default_factory=dict)
     volume: int = 100  # Global volume level (0-100)
+    zoom_level: float = 1.2  # UI zoom level (1.0 = 100%)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -58,6 +59,7 @@ class AppState:
                 folder: state.to_dict() for folder, state in self.playlists.items()
             },
             "volume": self.volume,
+            "zoom_level": self.zoom_level,
         }
 
     @classmethod
@@ -70,7 +72,13 @@ class AppState:
             for folder, state in playlists_data.items()
         }
         volume = data.get("volume", 100)
-        return cls(recent_folders=recent_folders, playlists=playlists, volume=volume)
+        zoom_level = data.get("zoom_level", 1.2)
+        return cls(
+            recent_folders=recent_folders,
+            playlists=playlists,
+            volume=volume,
+            zoom_level=zoom_level,
+        )
 
     def add_recent_folder(self, folder_path: str) -> None:
         """Add a folder to the recent folders list.
