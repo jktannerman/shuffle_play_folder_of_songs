@@ -10,11 +10,12 @@ from .media_utils import scan_folder
 from .player import VLCPlayer
 from .state import AppState, PlaylistState, save_state
 
-# Dark theme colors
-DARK_BG = "#2b2b2b"        # Main background
-DARK_BG_ALT = "#3c3c3c"    # Listbox, entry fields
-DARK_FG = "#e0e0e0"        # Text color
-DARK_ACCENT = "#4a9eff"    # Selection highlight
+# Dark theme colors (matching multi_file_search style)
+DARK_BG = "#1e1e1e"        # Main background (darkest)
+DARK_BG_ALT = "#2d2d2d"    # Frames, listbox
+DARK_BG_WIDGET = "#3c3c3c" # Buttons, entry fields
+DARK_FG = "#d4d4d4"        # Text color
+DARK_ACCENT = "#264f78"    # Selection highlight
 
 
 class SongFolderPlayerGUI:
@@ -59,6 +60,7 @@ class SongFolderPlayerGUI:
 
         # ttk style for theming
         self._style = ttk.Style()
+        self._apply_dark_theme()
 
         # VLC player with end callback
         self._player = VLCPlayer(on_end_callback=self._on_track_end)
@@ -194,6 +196,10 @@ class SongFolderPlayerGUI:
             yscrollcommand=self._scrollbar.set,
             selectmode=tk.SINGLE,
             font=("Consolas", 10),
+            bg=DARK_BG,
+            fg=DARK_FG,
+            selectbackground=DARK_ACCENT,
+            selectforeground="white",
         )
         self._playlist_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._scrollbar.config(command=self._playlist_listbox.yview)
@@ -316,6 +322,7 @@ class SongFolderPlayerGUI:
 
         if display_names:
             self._recent_combo.current(0)
+            self._recent_var.set(display_names[0])
 
     def _on_recent_selected(self, event: tk.Event) -> None:
         """Handle selection from recent folders dropdown."""
@@ -676,19 +683,63 @@ class SongFolderPlayerGUI:
 
     def _apply_dark_theme(self) -> None:
         """Apply dark theme to all widgets."""
+        # Use 'clam' theme which allows full color customization
+        self._style.theme_use("clam")
+
         # Configure ttk styles
-        self._style.configure(".", background=DARK_BG, foreground=DARK_FG)
-        self._style.configure("TFrame", background=DARK_BG)
-        self._style.configure("TLabel", background=DARK_BG, foreground=DARK_FG)
-        self._style.configure("TButton", background=DARK_BG_ALT)
-        self._style.configure("TCheckbutton", background=DARK_BG, foreground=DARK_FG)
+        self._style.configure(".", background=DARK_BG_ALT, foreground=DARK_FG)
+        self._style.configure("TFrame", background=DARK_BG_ALT)
+        self._style.configure("TLabel", background=DARK_BG_ALT, foreground=DARK_FG)
         self._style.configure(
-            "TCombobox", fieldbackground=DARK_BG_ALT, foreground=DARK_FG
+            "TButton", background=DARK_BG_WIDGET, foreground=DARK_FG, borderwidth=1
         )
-        self._style.configure("TEntry", fieldbackground=DARK_BG_ALT, foreground=DARK_FG)
+        self._style.map(
+            "TButton",
+            background=[("active", "#4a4a4a"), ("pressed", "#5a5a5a")],
+            foreground=[("active", DARK_FG), ("pressed", DARK_FG)],
+        )
+        self._style.configure("TCheckbutton", background=DARK_BG_ALT, foreground=DARK_FG)
+        self._style.configure(
+            "TCombobox", fieldbackground=DARK_BG_WIDGET, foreground=DARK_FG,
+            selectbackground=DARK_ACCENT, selectforeground="white"
+        )
+        self._style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", DARK_BG_WIDGET)],
+            foreground=[("readonly", DARK_FG)],
+            selectbackground=[("readonly", DARK_ACCENT)],
+            selectforeground=[("readonly", "white")],
+        )
+        self._style.configure("TEntry", fieldbackground=DARK_BG_WIDGET, foreground=DARK_FG)
+
+        # Scrollbar styling
+        self._style.configure(
+            "TScrollbar",
+            background="#5a5a5a",
+            troughcolor=DARK_BG_ALT,
+            borderwidth=0,
+            arrowcolor=DARK_FG,
+        )
+        self._style.map(
+            "TScrollbar",
+            background=[("active", "#6a6a6a"), ("pressed", "#7a7a7a")],
+        )
+
+        # Scale (slider) styling to match scrollbar
+        self._style.configure(
+            "Horizontal.TScale",
+            background=DARK_BG_ALT,
+            troughcolor=DARK_BG,
+            borderwidth=0,
+            sliderthickness=14,
+        )
+        self._style.map(
+            "Horizontal.TScale",
+            background=[("active", "#6a6a6a")],
+        )
 
         # Configure root window background
-        self.root.configure(bg=DARK_BG)
+        self.root.configure(bg=DARK_BG_ALT)
 
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""
