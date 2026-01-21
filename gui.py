@@ -74,8 +74,6 @@ class SongFolderPlayerGUI:
         # Load last folder if available
         if self.state.recent_folders:
             self._load_folder(self.state.recent_folders[0])
-            # Auto-load the current track (paused) so shortcuts work immediately
-            self._load_current_track_paused()
 
     def _setup_window(self) -> None:
         """Configure the main window."""
@@ -128,6 +126,7 @@ class SongFolderPlayerGUI:
             text="Shuffle",
             variable=self._shuffle_var,
             command=self._on_shuffle_toggle,
+            takefocus=False,
         )
         self._shuffle_check.pack(side=tk.LEFT, padx=(0, 10))
 
@@ -145,6 +144,7 @@ class SongFolderPlayerGUI:
             text="Loop Playlist",
             variable=self._loop_var,
             command=self._on_loop_toggle,
+            takefocus=False,
         )
         self._loop_check.pack(side=tk.LEFT)
 
@@ -252,12 +252,12 @@ class SongFolderPlayerGUI:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Global keyboard shortcuts
-        # Space returns "break" to prevent it from activating focused buttons
+        # All handlers return "break" to prevent event propagation to listbox
         self.root.bind("<space>", self._on_space_press)
-        self.root.bind("<End>", lambda e: self._play_next())
-        self.root.bind("<Home>", lambda e: self._restart_current())
-        self.root.bind("<Left>", lambda e: self._seek_relative(-5))
-        self.root.bind("<Right>", lambda e: self._seek_relative(5))
+        self.root.bind("<End>", self._on_end_press)
+        self.root.bind("<Home>", self._on_home_press)
+        self.root.bind("<Left>", self._on_left_press)
+        self.root.bind("<Right>", self._on_right_press)
         self.root.bind("/", lambda e: self._adjust_volume(-5))
         self.root.bind("*", lambda e: self._adjust_volume(5))
 
@@ -346,6 +346,10 @@ class SongFolderPlayerGUI:
         self._update_playlist_display()
         self._save_state()
 
+        # Stop old playback and load new playlist's current track (paused)
+        self._player.stop()
+        self._load_current_track_paused()
+
     def _update_playlist_display(self) -> None:
         """Update the playlist listbox."""
         self._playlist_listbox.delete(0, tk.END)
@@ -372,6 +376,8 @@ class SongFolderPlayerGUI:
             self._playlist_listbox.selection_clear(0, tk.END)
             self._playlist_listbox.selection_set(current_display_idx)
             self._playlist_listbox.see(current_display_idx)
+            # Always reset horizontal scroll to leftmost position
+            self._playlist_listbox.xview_moveto(0)
 
     def _get_current_display_index(self) -> int | None:
         """Get the current track's index in the display order.
@@ -403,13 +409,32 @@ class SongFolderPlayerGUI:
         return display_pos
 
     def _generate_shuffle_order(self) -> None:
-        """Generate a new shuffle order."""
-        if not self._playlist_state:
+        """Generate a new shuffle order with current song at top."""
+        if not self._playlist_state or not self._media_files:
             return
 
-        indices = list(range(len(self._media_files)))
-        random.shuffle(indices)
-        self._playlist_state.shuffle_order = indices
+        # Determine current file index
+        if self._playlist_state.shuffle_order:
+            # Already in shuffle mode - get file index from shuffle order
+            current_idx = self._playlist_state.current_index
+            if 0 <= current_idx < len(self._playlist_state.shuffle_order):
+                current_file_index = self._playlist_state.shuffle_order[current_idx]
+            else:
+                current_file_index = 0
+        else:
+            # In straight mode - current_index is the file index
+            current_file_index = self._playlist_state.current_index
+
+        # Clamp to valid range
+        if current_file_index < 0 or current_file_index >= len(self._media_files):
+            current_file_index = 0
+
+        # Shuffle all other indices
+        other_indices = [i for i in range(len(self._media_files)) if i != current_file_index]
+        random.shuffle(other_indices)
+
+        # Put current song at top, others below
+        self._playlist_state.shuffle_order = [current_file_index] + other_indices
         self._playlist_state.current_index = 0
 
     def _on_shuffle_toggle(self) -> None:
@@ -648,6 +673,54 @@ class SongFolderPlayerGUI:
             "break" to prevent event propagation to buttons.
         """
         self._toggle_pause()
+        return "break"
+
+    def _on_end_press(self, event: tk.Event) -> str:
+        """Handle End key press to skip to next track.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent event propagation to listbox.
+        """
+        self._play_next()
+        return "break"
+
+    def _on_home_press(self, event: tk.Event) -> str:
+        """Handle Home key press to restart current track.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent event propagation to listbox.
+        """
+        self._restart_current()
+        return "break"
+
+    def _on_left_press(self, event: tk.Event) -> str:
+        """Handle Left arrow key press to seek backward.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent event propagation to listbox.
+        """
+        self._seek_relative(-5)
+        return "break"
+
+    def _on_right_press(self, event: tk.Event) -> str:
+        """Handle Right arrow key press to seek forward.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent event propagation to listbox.
+        """
+        self._seek_relative(5)
         return "break"
 
     def _toggle_pause(self) -> None:

@@ -59,7 +59,8 @@ FEATURES
 4. PLAYBACK MODES
    - Straight mode: Plays files in sorted order
    - Shuffle mode: Randomized playback order (per-playlist)
-   - Reshuffle button: Generate new random order (resets to first track)
+   - Current song stays at top of list when shuffle enabled or reshuffled
+   - Reshuffle button: Generate new random order for remaining tracks
    - Loop toggle: Loop playlist or stop at end
 
 5. PER-PLAYLIST STATE
@@ -216,6 +217,7 @@ v1.1 - January 2026
 - Zoom level persistence across sessions
 - Default zoom set to 120%
 - Periodic auto-save every 5 seconds
+- Shuffle keeps current song at top of list
 
 v1.0 - January 2026 (Initial implementation)
 - Core playback functionality
