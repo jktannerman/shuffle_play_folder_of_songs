@@ -59,7 +59,8 @@ FEATURES
 4. PLAYBACK MODES
    - Straight mode: Plays files in sorted order
    - Shuffle mode: Randomized playback order (per-playlist)
-   - Reshuffle button: Generate new random order (resets to first track)
+   - Current song stays at top of list when shuffle enabled or reshuffled
+   - Reshuffle button: Generate new random order for remaining tracks
    - Loop toggle: Loop playlist or stop at end
 
 5. PER-PLAYLIST STATE
@@ -114,7 +115,15 @@ FEATURES
     - Default zoom: 120%
     - Zoom level persisted across sessions
 
-12. KEYBOARD SHORTCUTS (Global)
+12. SEARCH FILTER
+    - Real-time filtering as you type (VLC-style)
+    - Case-insensitive substring matching against filenames
+    - Clear button to quickly reset the search
+    - Currently playing track hidden if it doesn't match filter
+    - Keyboard shortcuts (Next/Previous) operate on full playlist, ignoring filter
+    - Double-click filtered results to play without clearing search
+
+13. KEYBOARD SHORTCUTS (Global)
     Space       - Pause/unpause current track
     End         - Skip to next track
     Home        - Restart current track from beginning
@@ -127,8 +136,10 @@ FEATURES
     Ctrl+=      - Zoom in (alternative)
     Ctrl+-      - Zoom out (decrease UI font size)
     Ctrl+0      - Reset zoom to 100%
+    Ctrl+F      - Focus search bar (selects existing text)
+    Escape      - Clear search and defocus search bar
 
-13. VLC INTEGRATION
+14. VLC INTEGRATION
     - Media plays in separate VLC window
     - Automatic advancement to next track on completion
     - Respects loop/stop setting at playlist end
@@ -137,26 +148,26 @@ FEATURES
 
 GUI LAYOUT
 ----------
-+--------------------------------------------------+
-| [Open Folder]  Recent: [dropdown menu______v]    |
-+--------------------------------------------------+
-| Folder: C:\path\to\current\folder                |
-+--------------------------------------------------+
-| [x] Shuffle  [Reshuffle]  [x] Loop Playlist      |
-+--------------------------------------------------+
-|                                                  |
-|    >> track1.mp3                                 |
-|       track2.mp3                                 |
-|       track3.mp3                                 |
-|       ...                                        |
-|                                                  |
-+--------------------------------------------------+
-| [Play] [Stop] [Previous] [Next]    Vol: [==] 75  |
-+--------------------------------------------------+
-| Now playing: track1.mp3                          |
-+--------------------------------------------------+
-| [==========|----------------]  2:34 / 5:12       |
-+--------------------------------------------------+
++------------------------------------------------------------------+
+| [Open Folder]  Recent: [dropdown menu______v]                    |
++------------------------------------------------------------------+
+| Folder: C:\path\to\current\folder                                |
++------------------------------------------------------------------+
+| [x] Shuffle  [Reshuffle]  [x] Loop       [__________________] [×] |
++------------------------------------------------------------------+
+|                                                                  |
+|    >> track1.mp3                                                 |
+|       track2.mp3                                                 |
+|       track3.mp3                                                 |
+|       ...                                                        |
+|                                                                  |
++------------------------------------------------------------------+
+| [Play] [Stop] [Previous] [Next]              Vol: [==] 75        |
++------------------------------------------------------------------+
+| Now playing: track1.mp3                                          |
++------------------------------------------------------------------+
+| [==========|----------------]  2:34 / 5:12                       |
++------------------------------------------------------------------+
 
 - ">>" marker indicates currently playing track
 - Selected track highlighted in listbox
@@ -207,6 +218,14 @@ NOTES
 
 VERSION HISTORY
 ---------------
+v1.2 - January 2026
+- Search filter bar (VLC-style real-time filtering)
+- Case-insensitive substring matching
+- Clear button to reset search
+- Keyboard navigation unaffected by search filter
+- Ctrl+F to focus search bar
+- Escape to clear and defocus search bar
+
 v1.1 - January 2026
 - Playback position persistence (resumes where you left off per-playlist)
 - Volume persistence across sessions
@@ -216,6 +235,7 @@ v1.1 - January 2026
 - Zoom level persistence across sessions
 - Default zoom set to 120%
 - Periodic auto-save every 5 seconds
+- Shuffle keeps current song at top of list
 
 v1.0 - January 2026 (Initial implementation)
 - Core playback functionality
