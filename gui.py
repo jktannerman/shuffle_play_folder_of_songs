@@ -38,6 +38,12 @@ class SongFolderPlayerGUI:
         self._loading: bool = False  # Flag to prevent callbacks during load
         self._seeking: bool = False  # Flag to prevent progress updates while seeking
 
+        # Search filter state
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", self._on_search_change)
+        # Maps filtered listbox pos -> (original_display_pos, file_index)
+        self._filtered_indices: list[tuple[int, int]] = []
+
         # Zoom level (1.0 = 100%)
         self._zoom_level: float = 1.0
         self._base_font_sizes: dict[str, int] = {
@@ -147,6 +153,28 @@ class SongFolderPlayerGUI:
             takefocus=False,
         )
         self._loop_check.pack(side=tk.LEFT)
+
+        # Search bar (right side of mode_frame)
+        # Use a Canvas to draw a perfectly centered X
+        self._search_clear_btn = tk.Canvas(
+            mode_frame,
+            width=16,
+            height=16,
+            cursor="hand2",
+            relief="raised",
+            borderwidth=1,
+            highlightthickness=0,
+        )
+        self._search_clear_btn.pack(side=tk.RIGHT, padx=(6, 0), pady=2)
+        self._search_clear_btn.bind("<Button-1>", lambda e: self._clear_search())
+        self._draw_clear_x()
+
+        self._search_entry = ttk.Entry(
+            mode_frame,
+            textvariable=self._search_var,
+            width=33,
+        )
+        self._search_entry.pack(side=tk.RIGHT, padx=(10, 0))
 
         # Playlist listbox with scrollbar
         list_frame = ttk.Frame(main_frame)
@@ -267,6 +295,10 @@ class SongFolderPlayerGUI:
         self.root.bind("<Control-minus>", lambda e: self._zoom_out())
         self.root.bind("<Control-0>", lambda e: self._zoom_reset())  # Reset to 100%
 
+        # Search shortcuts
+        self.root.bind("<Control-f>", self._on_ctrl_f)
+        self.root.bind("<Escape>", self._on_escape)
+
     def _update_recent_combo(self) -> None:
         """Update the recent folders dropdown."""
         display_names = []
@@ -351,11 +383,15 @@ class SongFolderPlayerGUI:
         self._load_current_track_paused()
 
     def _update_playlist_display(self) -> None:
-        """Update the playlist listbox."""
+        """Update the playlist listbox with optional search filtering."""
         self._playlist_listbox.delete(0, tk.END)
+        self._filtered_indices.clear()
 
         if not self._media_files:
             return
+
+        # Get search term (case-insensitive)
+        search_term = self._search_var.get().lower().strip()
 
         # Determine display order
         if self._playlist_state and self._playlist_state.shuffle_order:
@@ -363,19 +399,36 @@ class SongFolderPlayerGUI:
         else:
             display_order = list(range(len(self._media_files)))
 
-        # Add files to listbox
+        # Get current display index for marking
+        current_display_idx = self._get_current_display_index()
+
+        # Add files to listbox (filtered by search term)
+        filtered_current_pos: int | None = None
         for pos, file_index in enumerate(display_order):
             if 0 <= file_index < len(self._media_files):
                 file = self._media_files[file_index]
-                prefix = ">> " if pos == self._get_current_display_index() else "   "
+
+                # Apply search filter
+                if search_term and search_term not in file.name.lower():
+                    continue
+
+                # Track position in filtered list: (original_display_pos, file_index)
+                filtered_pos = len(self._filtered_indices)
+                self._filtered_indices.append((pos, file_index))
+
+                # Show marker only if this is current track and it passes filter
+                prefix = ">> " if pos == current_display_idx else "   "
                 self._playlist_listbox.insert(tk.END, f"{prefix}{file.name}")
 
-        # Highlight current track
-        current_display_idx = self._get_current_display_index()
-        if current_display_idx is not None and current_display_idx >= 0:
+                # Track filtered position of current track
+                if pos == current_display_idx:
+                    filtered_current_pos = filtered_pos
+
+        # Highlight current track in filtered list (if visible)
+        if filtered_current_pos is not None:
             self._playlist_listbox.selection_clear(0, tk.END)
-            self._playlist_listbox.selection_set(current_display_idx)
-            self._playlist_listbox.see(current_display_idx)
+            self._playlist_listbox.selection_set(filtered_current_pos)
+            self._playlist_listbox.see(filtered_current_pos)
             # Always reset horizontal scroll to leftmost position
             self._playlist_listbox.xview_moveto(0)
 
@@ -477,6 +530,57 @@ class SongFolderPlayerGUI:
             self._playlist_state.loop_enabled = self._loop_var.get()
             self._save_state()
 
+    def _on_search_change(self, *args: object) -> None:
+        """Handle search entry text change.
+
+        Args:
+            *args: Variable trace callback arguments (name, index, mode).
+        """
+        self._update_playlist_display()
+
+    def _clear_search(self) -> None:
+        """Clear the search filter."""
+        self._search_var.set("")
+        # Return focus to root so keyboard shortcuts work
+        self.root.focus_set()
+
+    def _draw_clear_x(self) -> None:
+        """Draw the X on the clear button canvas."""
+        canvas = self._search_clear_btn
+        canvas.delete("all")
+        # Get canvas dimensions (accounting for border)
+        w = canvas.winfo_width()
+        h = canvas.winfo_height()
+        if w <= 1:  # Not yet rendered, use configured size
+            w = int(canvas.cget("width"))
+            h = int(canvas.cget("height"))
+        # Draw X with padding from edges
+        pad = max(3, int(min(w, h) * 0.25))
+        canvas.create_line(pad, pad, w - pad, h - pad, width=1, fill="black")
+        canvas.create_line(w - pad, pad, pad, h - pad, width=1, fill="black")
+
+    def _on_ctrl_f(self, event: tk.Event) -> str:
+        """Handle Ctrl+F to focus search entry.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent default handling.
+        """
+        self._search_entry.focus_set()
+        self._search_entry.select_range(0, tk.END)
+        return "break"
+
+    def _on_escape(self, event: tk.Event) -> None:
+        """Handle Escape to clear and defocus search.
+
+        Args:
+            event: The key event.
+        """
+        if self.root.focus_get() == self._search_entry:
+            self._clear_search()
+
     def _on_volume_change(self, value: str) -> None:
         """Handle volume slider change.
 
@@ -547,6 +651,14 @@ class SongFolderPlayerGUI:
         self._style.configure("TLabel", font=("TkDefaultFont", ui_size))
         self._style.configure("TCheckbutton", font=("TkDefaultFont", ui_size))
         self._style.configure("TCombobox", font=("TkDefaultFont", ui_size))
+        self._style.configure("TEntry", font=("TkDefaultFont", ui_size))
+
+        # Update search clear button (always square, matches search entry height)
+        self.root.update_idletasks()  # Ensure entry has updated dimensions
+        entry_height = self._search_entry.winfo_reqheight()
+        clear_btn_size = max(14, entry_height - 4)  # Slightly smaller than entry
+        self._search_clear_btn.config(width=clear_btn_size, height=clear_btn_size)
+        self._draw_clear_x()
 
         # Update specific label fonts (these override the style)
         self._volume_level_label.config(font=("Consolas", ui_size))
@@ -562,8 +674,12 @@ class SongFolderPlayerGUI:
         if not selection or not self._media_files:
             return
 
-        display_pos = selection[0]
-        self._play_at_display_position(display_pos)
+        filtered_pos = selection[0]
+
+        # Map filtered listbox position to original display position
+        if filtered_pos < len(self._filtered_indices):
+            original_display_pos, _ = self._filtered_indices[filtered_pos]
+            self._play_at_display_position(original_display_pos)
 
     def _play_at_display_position(self, display_pos: int) -> None:
         """Play track at the given display position.
@@ -663,15 +779,18 @@ class SongFolderPlayerGUI:
         """
         self.root.after(0, self._play_next)
 
-    def _on_space_press(self, event: tk.Event) -> str:
+    def _on_space_press(self, event: tk.Event) -> str | None:
         """Handle space key press globally.
 
         Args:
             event: The key event.
 
         Returns:
-            "break" to prevent event propagation to buttons.
+            "break" to prevent event propagation, or None to allow normal handling.
         """
+        # Allow typing in search entry
+        if self.root.focus_get() == self._search_entry:
+            return None
         self._toggle_pause()
         return "break"
 
