@@ -76,6 +76,10 @@ class SongFolderPlayerGUI:
         self._search_var.trace_add("write", self._on_search_change)
         # Maps filtered listbox pos -> (original_display_pos, file_index)
         self._filtered_indices: list[tuple[int, int]] = []
+        # When True, search results highlight first match; when False, highlight current track
+        self._search_select_first: bool = False
+        # Stores active item position before search began (for restore on Esc)
+        self._pre_search_active_pos: int | None = None
 
         # Zoom level (1.0 = 100%)
         self._zoom_level: float = 1.0
@@ -332,6 +336,7 @@ class SongFolderPlayerGUI:
         # Search shortcuts
         self.root.bind("<Control-f>", self._on_ctrl_f)
         self.root.bind("<Escape>", self._on_escape)
+        self._search_entry.bind("<Return>", self._on_search_enter)
 
     def _update_recent_combo(self) -> None:
         """Update the recent folders dropdown."""
@@ -417,6 +422,9 @@ class SongFolderPlayerGUI:
         self._player.stop()
         self._load_current_track_paused()
 
+        # Give listbox focus so arrow keys work immediately
+        self._playlist_listbox.focus_set()
+
     def _update_playlist_display(self) -> None:
         """Update the playlist listbox with optional search filtering."""
         self._playlist_listbox.delete(0, tk.END)
@@ -459,11 +467,31 @@ class SongFolderPlayerGUI:
                 if pos == current_display_idx:
                     filtered_current_pos = filtered_pos
 
-        # Highlight current track in filtered list (if visible)
-        if filtered_current_pos is not None:
-            self._playlist_listbox.selection_clear(0, tk.END)
-            self._playlist_listbox.selection_set(filtered_current_pos)
-            self._playlist_listbox.see(filtered_current_pos)
+        # Determine active (underline) and selection (highlight) positions
+        # Selection = currently playing track, Active = navigation cursor
+        self._playlist_listbox.selection_clear(0, tk.END)
+
+        if search_term and self._search_select_first and self._filtered_indices:
+            # When searching: underline first match, highlight only if it's playing
+            active_pos = 0
+            selection_pos = filtered_current_pos  # None if current track not in results
+        elif filtered_current_pos is not None:
+            # Current track visible: both underline and highlight it
+            active_pos = filtered_current_pos
+            selection_pos = filtered_current_pos
+        elif self._filtered_indices:
+            # No current track, highlight first item
+            active_pos = 0
+            selection_pos = 0
+        else:
+            active_pos = None
+            selection_pos = None
+
+        if selection_pos is not None:
+            self._playlist_listbox.selection_set(selection_pos)
+        if active_pos is not None:
+            self._playlist_listbox.activate(active_pos)
+            self._playlist_listbox.see(active_pos)
             # Always reset horizontal scroll to leftmost position
             self._playlist_listbox.xview_moveto(0)
 
@@ -571,13 +599,26 @@ class SongFolderPlayerGUI:
         Args:
             *args: Variable trace callback arguments (name, index, mode).
         """
+        search_term = self._search_var.get().strip()
+
+        # Store active position when starting a new search
+        if search_term and self._pre_search_active_pos is None:
+            try:
+                self._pre_search_active_pos = self._playlist_listbox.index(tk.ACTIVE)
+            except tk.TclError:
+                self._pre_search_active_pos = 0
+        elif not search_term:
+            self._pre_search_active_pos = None
+
+        # When actively searching, highlight the first match
+        self._search_select_first = bool(search_term)
         self._update_playlist_display()
 
     def _clear_search(self) -> None:
-        """Clear the search filter."""
+        """Clear the search filter and restore current track highlight."""
+        self._search_select_first = False
+        self._pre_search_active_pos = None
         self._search_var.set("")
-        # Return focus to root so keyboard shortcuts work
-        self.root.focus_set()
 
     def _on_clear_checkbox(self) -> None:
         """Handle clear checkbox click - clear search and re-check."""
@@ -598,14 +639,45 @@ class SongFolderPlayerGUI:
         self._search_entry.select_range(0, tk.END)
         return "break"
 
+    def _on_search_enter(self, event: tk.Event) -> str:
+        """Handle Enter in search entry - focus listbox and activate first item.
+
+        Args:
+            event: The key event.
+
+        Returns:
+            "break" to prevent default handling.
+        """
+        if self._filtered_indices:
+            self._playlist_listbox.focus_set()
+            self._playlist_listbox.activate(0)
+            self._playlist_listbox.see(0)
+        return "break"
+
     def _on_escape(self, event: tk.Event) -> None:
-        """Handle Escape to clear and defocus search.
+        """Handle Escape for search navigation.
+
+        - Search entry focused: Clear search, restore previous active position
+        - Listbox focused during search: Return to search entry
 
         Args:
             event: The key event.
         """
-        if self.root.focus_get() == self._search_entry:
+        focused = self.root.focus_get()
+        search_active = bool(self._search_var.get().strip())
+
+        if focused == self._search_entry:
+            # In search bar: clear search and restore previous position
+            saved_pos = self._pre_search_active_pos
             self._clear_search()
+            if saved_pos is not None and self._filtered_indices:
+                self._playlist_listbox.activate(saved_pos)
+                self._playlist_listbox.see(saved_pos)
+            self._playlist_listbox.focus_set()
+        elif focused == self._playlist_listbox and search_active:
+            # In listbox during search: return to search bar
+            self._search_entry.focus_set()
+            self._search_entry.select_range(0, tk.END)
 
     def _on_volume_change(self, value: str) -> None:
         """Handle volume slider change.
@@ -751,12 +823,14 @@ class SongFolderPlayerGUI:
         _enable_dark_title_bar(self.root)
 
     def _play_selected(self) -> None:
-        """Play the selected track in the listbox."""
-        selection = self._playlist_listbox.curselection()
-        if not selection or not self._media_files:
+        """Play the active (underlined) track in the listbox."""
+        if not self._media_files:
             return
 
-        filtered_pos = selection[0]
+        try:
+            filtered_pos = self._playlist_listbox.index(tk.ACTIVE)
+        except tk.TclError:
+            return
 
         # Map filtered listbox position to original display position
         if filtered_pos < len(self._filtered_indices):

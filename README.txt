@@ -118,7 +118,11 @@ FEATURES
 12. SEARCH FILTER
     - Real-time filtering as you type (VLC-style)
     - Case-insensitive substring matching against filenames
-    - Clear button to quickly reset the search
+    - First matching result highlighted while typing
+    - Enter in search bar focuses listbox with first result ready to play
+    - Escape in listbox (during search) returns to search bar for more typing
+    - Escape in search bar clears search and restores previous track position
+    - Clear checkbox to quickly reset the search
     - Currently playing track hidden if it doesn't match filter
     - Keyboard shortcuts (Next/Previous) operate on full playlist, ignoring filter
     - Double-click filtered results to play without clearing search
@@ -129,7 +133,7 @@ FEATURES
     Home        - Restart current track from beginning
     Left Arrow  - Seek backward 5 seconds
     Right Arrow - Seek forward 5 seconds
-    Enter       - Play selected track (when listbox focused)
+    Enter       - Play selected track (listbox) / Focus listbox (search bar)
     /           - Decrease volume by 5%
     *           - Increase volume by 5%
     Ctrl++      - Zoom in (increase UI font size)
@@ -137,13 +141,21 @@ FEATURES
     Ctrl+-      - Zoom out (decrease UI font size)
     Ctrl+0      - Reset zoom to 100%
     Ctrl+F      - Focus search bar (selects existing text)
-    Escape      - Clear search and defocus search bar
+    Escape      - Return to search bar (listbox during search)
+                  Clear search and restore position (search bar)
 
 14. VLC INTEGRATION
     - Media plays in separate VLC window
     - Automatic advancement to next track on completion
     - Respects loop/stop setting at playlist end
     - Quiet mode suppresses VLC plugin cache warnings
+
+15. DARK MODE THEME
+    - Full dark theme applied to all UI elements
+    - Dark title bar on Windows 10/11 (native integration)
+    - Color scheme: #1e1e1e (darkest), #2d2d2d (frames), #3c3c3c (widgets)
+    - Light text (#d4d4d4) for readability
+    - Styled scrollbars and sliders to match theme
 
 
 GUI LAYOUT
@@ -153,7 +165,7 @@ GUI LAYOUT
 +------------------------------------------------------------------+
 | Folder: C:\path\to\current\folder                                |
 +------------------------------------------------------------------+
-| [x] Shuffle  [Reshuffle]  [x] Loop       [__________________] [×] |
+| [x] Shuffle  [Reshuffle]  [x] Loop       [__________________] [x] |
 +------------------------------------------------------------------+
 |                                                                  |
 |    >> track1.mp3                                                 |
@@ -218,6 +230,22 @@ NOTES
 
 VERSION HISTORY
 ---------------
+v1.4 - January 2026
+- Keyboard-only search navigation flow
+- Enter in search bar focuses listbox with first result underlined
+- Escape in listbox (during search) returns to search bar with text selected
+- Escape in search bar clears search and restores previous track position
+- Pre-search position remembered and restored on search cancel
+
+v1.3 - January 2026
+- Dark mode theme throughout the application
+- Dark title bar on Windows 10/11 (uses native Windows API)
+- Color scheme matches multi_file_search style (#1e1e1e backgrounds)
+- Dark scrollbar and slider styling
+- Search now highlights first matching result while typing
+- Escape restores highlight to currently playing track
+- Clear button replaced with checkbox (matches theme aesthetics)
+
 v1.2 - January 2026
 - Search filter bar (VLC-style real-time filtering)
 - Case-insensitive substring matching
