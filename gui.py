@@ -1,6 +1,8 @@
 """Tkinter GUI for Song Folder Player."""
 
+import ctypes
 import random
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
@@ -16,6 +18,30 @@ DARK_BG_ALT = "#2d2d2d"    # Frames, listbox
 DARK_BG_WIDGET = "#3c3c3c" # Buttons, entry fields
 DARK_FG = "#d4d4d4"        # Text color
 DARK_ACCENT = "#264f78"    # Selection highlight
+
+
+def _enable_dark_title_bar(window: tk.Tk) -> None:
+    """Enable dark title bar on Windows 10/11.
+
+    Args:
+        window: The tkinter root window.
+    """
+    if sys.platform != "win32":
+        return
+
+    try:
+        window.update()  # Ensure window is created
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20 (Windows 10 20H1+)
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        value = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(value), ctypes.sizeof(value)
+        )
+    except (AttributeError, OSError):
+        pass  # Silently fail on older Windows versions
 
 
 class SongFolderPlayerGUI:
@@ -163,19 +189,15 @@ class SongFolderPlayerGUI:
         self._loop_check.pack(side=tk.LEFT)
 
         # Search bar (right side of mode_frame)
-        # Use a Canvas to draw a perfectly centered X
-        self._search_clear_btn = tk.Canvas(
+        # Clear checkbox - clicking clears search and re-checks itself
+        self._search_clear_var = tk.BooleanVar(value=True)
+        self._search_clear_btn = ttk.Checkbutton(
             mode_frame,
-            width=16,
-            height=16,
-            cursor="hand2",
-            relief="raised",
-            borderwidth=1,
-            highlightthickness=0,
+            variable=self._search_clear_var,
+            command=self._on_clear_checkbox,
+            takefocus=False,
         )
         self._search_clear_btn.pack(side=tk.RIGHT, padx=(6, 0), pady=2)
-        self._search_clear_btn.bind("<Button-1>", lambda e: self._clear_search())
-        self._draw_clear_x()
 
         self._search_entry = ttk.Entry(
             mode_frame,
@@ -557,20 +579,11 @@ class SongFolderPlayerGUI:
         # Return focus to root so keyboard shortcuts work
         self.root.focus_set()
 
-    def _draw_clear_x(self) -> None:
-        """Draw the X on the clear button canvas."""
-        canvas = self._search_clear_btn
-        canvas.delete("all")
-        # Get canvas dimensions (accounting for border)
-        w = canvas.winfo_width()
-        h = canvas.winfo_height()
-        if w <= 1:  # Not yet rendered, use configured size
-            w = int(canvas.cget("width"))
-            h = int(canvas.cget("height"))
-        # Draw X with padding from edges
-        pad = max(3, int(min(w, h) * 0.25))
-        canvas.create_line(pad, pad, w - pad, h - pad, width=1, fill="black")
-        canvas.create_line(w - pad, pad, pad, h - pad, width=1, fill="black")
+    def _on_clear_checkbox(self) -> None:
+        """Handle clear checkbox click - clear search and re-check."""
+        self._clear_search()
+        # Re-check the checkbox
+        self._search_clear_var.set(True)
 
     def _on_ctrl_f(self, event: tk.Event) -> str:
         """Handle Ctrl+F to focus search entry.
@@ -666,13 +679,6 @@ class SongFolderPlayerGUI:
         self._style.configure("TCombobox", font=("TkDefaultFont", ui_size))
         self._style.configure("TEntry", font=("TkDefaultFont", ui_size))
 
-        # Update search clear button (always square, matches search entry height)
-        self.root.update_idletasks()  # Ensure entry has updated dimensions
-        entry_height = self._search_entry.winfo_reqheight()
-        clear_btn_size = max(14, entry_height - 4)  # Slightly smaller than entry
-        self._search_clear_btn.config(width=clear_btn_size, height=clear_btn_size)
-        self._draw_clear_x()
-
         # Update specific label fonts (these override the style)
         self._volume_level_label.config(font=("Consolas", ui_size))
         self._now_playing_label.config(font=("Arial", ui_size))
@@ -740,6 +746,9 @@ class SongFolderPlayerGUI:
 
         # Configure root window background
         self.root.configure(bg=DARK_BG_ALT)
+
+        # Enable dark title bar on Windows
+        _enable_dark_title_bar(self.root)
 
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""
