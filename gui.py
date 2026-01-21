@@ -81,8 +81,8 @@ class SongFolderPlayerGUI:
         # Stores active item position before search began (for restore on Esc)
         self._pre_search_active_pos: int | None = None
 
-        # Zoom level (1.0 = 100%)
-        self._zoom_level: float = 1.0
+        # Zoom level (1.0 = 100%, default 1.2 = 120%)
+        self._zoom_level: float = 1.2
         self._base_font_sizes: dict[str, int] = {
             "playlist": 10,
             "ui": 9,
@@ -729,8 +729,8 @@ class SongFolderPlayerGUI:
         self._apply_zoom()
 
     def _zoom_reset(self) -> None:
-        """Reset zoom level to 100%."""
-        self._zoom_level = 1.0
+        """Reset zoom level to 120% (default)."""
+        self._zoom_level = 1.2
         self._apply_zoom()
 
     def _apply_zoom(self) -> None:

@@ -49,7 +49,7 @@ class AppState:
     recent_folders: list[str] = field(default_factory=list)
     playlists: dict[str, PlaylistState] = field(default_factory=dict)
     volume: int = 100  # Global volume level (0-100)
-    zoom_level: float = 1.2  # UI zoom level (1.0 = 100%)
+    zoom_level: float = 1.4  # UI zoom level (1.0 = 100%)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""

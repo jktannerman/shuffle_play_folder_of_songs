@@ -139,7 +139,7 @@ FEATURES
     Ctrl++      - Zoom in (increase UI font size)
     Ctrl+=      - Zoom in (alternative)
     Ctrl+-      - Zoom out (decrease UI font size)
-    Ctrl+0      - Reset zoom to 100%
+    Ctrl+0      - Reset zoom to 120% (default)
     Ctrl+F      - Focus search bar (selects existing text)
     Escape      - Return to search bar (listbox during search)
                   Clear search and restore position (search bar)
