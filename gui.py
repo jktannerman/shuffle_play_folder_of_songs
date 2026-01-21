@@ -10,6 +10,12 @@ from .media_utils import scan_folder
 from .player import VLCPlayer
 from .state import AppState, PlaylistState, save_state
 
+# Dark theme colors
+DARK_BG = "#2b2b2b"        # Main background
+DARK_BG_ALT = "#3c3c3c"    # Listbox, entry fields
+DARK_FG = "#e0e0e0"        # Text color
+DARK_ACCENT = "#4a9eff"    # Selection highlight
+
 
 class SongFolderPlayerGUI:
     """Main GUI for the Song Folder Player application."""
@@ -667,6 +673,22 @@ class SongFolderPlayerGUI:
 
         # Update combobox dropdown font
         self.root.option_add("*TCombobox*Listbox.font", ("TkDefaultFont", ui_size))
+
+    def _apply_dark_theme(self) -> None:
+        """Apply dark theme to all widgets."""
+        # Configure ttk styles
+        self._style.configure(".", background=DARK_BG, foreground=DARK_FG)
+        self._style.configure("TFrame", background=DARK_BG)
+        self._style.configure("TLabel", background=DARK_BG, foreground=DARK_FG)
+        self._style.configure("TButton", background=DARK_BG_ALT)
+        self._style.configure("TCheckbutton", background=DARK_BG, foreground=DARK_FG)
+        self._style.configure(
+            "TCombobox", fieldbackground=DARK_BG_ALT, foreground=DARK_FG
+        )
+        self._style.configure("TEntry", fieldbackground=DARK_BG_ALT, foreground=DARK_FG)
+
+        # Configure root window background
+        self.root.configure(bg=DARK_BG)
 
     def _play_selected(self) -> None:
         """Play the selected track in the listbox."""
