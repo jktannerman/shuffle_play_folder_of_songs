@@ -1,6 +1,8 @@
 """State persistence for the Song Folder Player."""
 
+import io
 import json
+import msvcrt
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -10,6 +12,7 @@ from typing import Any
 
 # State file location - same directory as the app
 STATE_FILE = Path(__file__).parent / "state.json"
+LOCK_FILE = Path(__file__).parent / "state.lock"
 MAX_RECENT_FOLDERS = 10
 
 
@@ -49,7 +52,7 @@ class AppState:
     recent_folders: list[str] = field(default_factory=list)
     playlists: dict[str, PlaylistState] = field(default_factory=dict)
     volume: int = 100  # Global volume level (0-100)
-    zoom_level: float = 1.4  # UI zoom level (1.0 = 100%)
+    zoom_level: float = 1.2  # UI zoom level (1.0 = 100%)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -173,3 +176,42 @@ def save_state(state: AppState) -> None:
         except OSError:
             pass
         raise
+
+
+def acquire_lock() -> io.TextIOWrapper | None:
+    """Try to acquire an exclusive lock for state writing.
+
+    Returns:
+        File handle if lock acquired (must stay open), None if another
+        instance already holds the lock.
+    """
+    try:
+        fh = open(LOCK_FILE, "w", encoding="utf-8")
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        fh.write(str(os.getpid()))
+        fh.flush()
+        return fh
+    except (OSError, PermissionError):
+        try:
+            fh.close()
+        except Exception:
+            pass
+        return None
+
+
+def release_lock(fh: io.TextIOWrapper) -> None:
+    """Release the state lock and clean up the lock file.
+
+    Args:
+        fh: File handle returned by acquire_lock.
+    """
+    try:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        fh.close()
+    except OSError:
+        pass
+    try:
+        LOCK_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass

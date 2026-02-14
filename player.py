@@ -68,6 +68,14 @@ class VLCPlayer:
         """Toggle pause state."""
         self._player.pause()
 
+    def set_paused(self, paused: bool) -> None:
+        """Set the paused state explicitly (not a toggle).
+
+        Args:
+            paused: True to pause, False to resume playback.
+        """
+        self._player.set_pause(1 if paused else 0)
+
     def is_playing(self) -> bool:
         """Check if media is currently playing.
 

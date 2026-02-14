@@ -888,7 +888,8 @@ class SongFolderPlayerGUI:
         self._now_playing_label.config(text=f"Now playing: {file_path.name}")
 
         # Schedule pause after VLC has started (needs small delay)
-        self.root.after(100, self._player.pause)
+        # Use set_paused(True) instead of pause() to ensure it's paused (not toggled)
+        self.root.after(100, lambda: self._player.set_paused(True))
 
         # Seek to saved position after VLC has loaded (needs more delay)
         saved_position = self._playlist_state.playback_position_ms
