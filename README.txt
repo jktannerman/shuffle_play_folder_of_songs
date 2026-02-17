@@ -150,7 +150,14 @@ FEATURES
     - Respects loop/stop setting at playlist end
     - Quiet mode suppresses VLC plugin cache warnings
 
-15. DARK MODE THEME
+15. MULTI-INSTANCE SUPPORT
+    - Multiple instances can run simultaneously without state corruption
+    - First instance acquires a file lock and saves state normally
+    - Subsequent instances run fully functional but in read-only mode
+    - Read-only instances show a "READ-ONLY" badge in the top-right corner
+    - Lock auto-releases on crash (no stale lock cleanup needed)
+
+16. DARK MODE THEME
     - Full dark theme applied to all UI elements
     - Dark title bar on Windows 10/11 (native integration)
     - Color scheme: #1e1e1e (darkest), #2d2d2d (frames), #3c3c3c (widgets)
@@ -230,6 +237,12 @@ NOTES
 
 VERSION HISTORY
 ---------------
+v1.5 - February 2026
+- Multi-instance support with lockfile-based coordination
+- First instance saves state normally; subsequent instances run in read-only mode
+- "READ-ONLY" badge in top-right corner with hover tooltip on secondary instances
+- Uses msvcrt file locking — auto-released on crash, no stale lock issues
+
 v1.4 - January 2026
 - Keyboard-only search navigation flow
 - Enter in search bar focuses listbox with first result underlined

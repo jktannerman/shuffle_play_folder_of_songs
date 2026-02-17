@@ -61,8 +61,27 @@ def _add_readonly_indicator(root: tk.Tk) -> None:
     )
 
 
+def _print_banner() -> None:
+    """Print a music-themed block banner in cyan."""
+    cyan = "\033[36m"
+    reset = "\033[0m"
+    banner = (
+        "\n"
+        "  ██████  ███████ ██████\n"
+        "  ██      ██      ██   ██\n"
+        "  ██████  █████   ██████\n"
+        "      ██  ██      ██\n"
+        "  ██████  ██      ██\n"
+        "\n"
+        "  ♪  Song Folder Player  ♪\n"
+    )
+    print(f"{cyan}{banner}{reset}")
+
+
 def main() -> None:
     """Initialize and run the Song Folder Player application."""
+    _print_banner()
+
     # Load saved state
     state = load_state()
 
