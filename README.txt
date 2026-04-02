@@ -94,6 +94,8 @@ FEATURES
    - Restores saved volume level
    - Restores saved zoom level
    - Keyboard shortcuts work immediately without clicking
+   - Window opens immediately; playlist shows "Loading player..." while VLC
+     initializes in the background, then populates automatically
 
 9. PROGRESS BAR
    - Shows current playback position
@@ -233,10 +235,22 @@ NOTES
 - VLC must be installed separately; python-vlc is just the bindings
 - If VLC shows "stale plugins cache" warnings, run as Administrator:
   "C:\Program Files\VideoLAN\VLC\vlc-cache-gen.exe" "C:\Program Files\VideoLAN\VLC\plugins"
+- Slow startup (long "Loading player..." period) is usually caused by VLC
+  rebuilding its plugin cache. This is most often triggered by a pending VLC
+  update — updating VLC to the latest version typically resolves it. If the
+  issue persists after updating, run vlc-cache-gen.exe (above) as a manual fix,
+  and consider adding VLC's plugins folder to Windows Defender's exclusion list
+  to prevent Defender scans from invalidating the cache on each reboot:
+  C:\Program Files\VideoLAN\VLC\plugins
 
 
 VERSION HISTORY
 ---------------
+v1.6 - April 2026
+- Window now opens immediately on startup; VLC initializes in the background
+- Playlist shows "Loading player..." indicator while VLC is starting up,
+  replacing the ambiguous empty-folder appearance
+
 v1.5 - February 2026
 - Multi-instance support with lockfile-based coordination
 - First instance saves state normally; subsequent instances run in read-only mode

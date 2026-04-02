@@ -16,7 +16,7 @@ class VLCPlayer:
             on_end_callback: Function to call when track ends.
         """
         # Use --quiet to suppress verbose VLC logging (stale cache warnings, etc.)
-        self._instance = vlc.Instance("--quiet")
+        self._instance = vlc.Instance("--quiet", "--no-video")
         self._player = self._instance.media_player_new()
         self._on_end_callback = on_end_callback
         self._current_file: Path | None = None

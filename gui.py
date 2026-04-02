@@ -3,6 +3,7 @@
 import ctypes
 import random
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
@@ -92,17 +93,16 @@ class SongFolderPlayerGUI:
         self._style = ttk.Style()
         self._apply_dark_theme()
 
-        # VLC player with end callback
-        self._player = VLCPlayer(on_end_callback=self._on_track_end)
+        # VLC player - deferred until after window is drawn
+        self._player: VLCPlayer | None = None
 
         # Build GUI
         self._setup_window()
         self._create_widgets()
         self._bind_events()
 
-        # Apply saved volume
+        # Apply saved volume (UI only; player initialized after window is drawn)
         self._volume_var.set(self.state.volume)
-        self._player.set_volume(self.state.volume)
         self._volume_level_label.config(text=str(self.state.volume))
 
         # Apply saved zoom level
@@ -115,7 +115,33 @@ class SongFolderPlayerGUI:
         # Start periodic save timer (every 5 seconds)
         self._start_periodic_save()
 
-        # Load last folder if available
+        # Defer player creation and folder load until after window is drawn
+        self.root.after(0, self._init_player)
+
+    def _init_player(self) -> None:
+        """Spawn a background thread to initialize VLC.
+
+        VLC plugin scanning can block for several seconds on first launch.
+        Running it off the main thread keeps the window responsive.
+        """
+        self._playlist_listbox.insert(tk.END, "  Loading player...")
+        self._playlist_listbox.itemconfig(0, foreground="#666666")
+
+        def _create() -> None:
+            player = VLCPlayer(on_end_callback=self._on_track_end)
+            self.root.after(0, lambda: self._finish_player_init(player))
+
+        threading.Thread(target=_create, daemon=True).start()
+
+    def _finish_player_init(self, player: VLCPlayer) -> None:
+        """Complete player setup on the main thread once VLC is ready.
+
+        Args:
+            player: The fully initialized VLCPlayer instance.
+        """
+        self._player = player
+        self._player.set_volume(self.state.volume)
+
         if self.state.recent_folders:
             self._load_folder(self.state.recent_folders[0])
 
@@ -445,7 +471,8 @@ class SongFolderPlayerGUI:
         # Get current display index for marking
         current_display_idx = self._get_current_display_index()
 
-        # Add files to listbox (filtered by search term)
+        # Build item strings and filtered index list, then insert in one bulk call
+        items: list[str] = []
         filtered_current_pos: int | None = None
         for pos, file_index in enumerate(display_order):
             if 0 <= file_index < len(self._media_files):
@@ -461,11 +488,14 @@ class SongFolderPlayerGUI:
 
                 # Show marker only if this is current track and it passes filter
                 prefix = ">> " if pos == current_display_idx else "   "
-                self._playlist_listbox.insert(tk.END, f"{prefix}{file.name}")
+                items.append(f"{prefix}{file.name}")
 
                 # Track filtered position of current track
                 if pos == current_display_idx:
                     filtered_current_pos = filtered_pos
+
+        if items:
+            self._playlist_listbox.insert(tk.END, *items)
 
         # Determine active (underline) and selection (highlight) positions
         # Selection = currently playing track, Active = navigation cursor
@@ -1087,7 +1117,7 @@ class SongFolderPlayerGUI:
 
     def _update_progress(self) -> None:
         """Update the progress bar and time label."""
-        if self._player.get_current_file():
+        if self._player and self._player.get_current_file():
             current_ms = self._player.get_time()
             length_ms = self._player.get_length()
 
@@ -1127,7 +1157,7 @@ class SongFolderPlayerGUI:
     def _periodic_save(self) -> None:
         """Periodically save playback position and volume to state."""
         # Update playback position from player
-        if self._playlist_state and self._player.get_current_file():
+        if self._player and self._playlist_state and self._player.get_current_file():
             current_ms = self._player.get_time()
             if current_ms >= 0:
                 self._playlist_state.playback_position_ms = current_ms
@@ -1140,7 +1170,8 @@ class SongFolderPlayerGUI:
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        self._player.release()
+        if self._player:
+            self._player.release()
         self._save_state()
         self.root.destroy()
 
