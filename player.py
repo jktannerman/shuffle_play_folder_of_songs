@@ -20,13 +20,28 @@ class VLCPlayer:
         self._player = self._instance.media_player_new()
         self._on_end_callback = on_end_callback
         self._current_file: Path | None = None
+        self._pause_on_play: bool = False  # Set True to pause on next MediaPlayerPlaying
 
-        # Set up end-of-media event
+        # Set up events
         event_manager = self._player.event_manager()
         event_manager.event_attach(
             vlc.EventType.MediaPlayerEndReached,
             self._handle_end_reached
         )
+        event_manager.event_attach(
+            vlc.EventType.MediaPlayerPlaying,
+            self._handle_playing
+        )
+
+    def _handle_playing(self, event: vlc.Event) -> None:
+        """Handle media player entering playing state.
+
+        Args:
+            event: VLC event (unused but required by callback signature).
+        """
+        if self._pause_on_play:
+            self._pause_on_play = False
+            self._player.set_pause(1)
 
     def _handle_end_reached(self, event: vlc.Event) -> None:
         """Handle media end reached event.
@@ -56,6 +71,31 @@ class VLCPlayer:
         self._current_file = path
 
         # Start playback
+        result = self._player.play()
+        return result == 0
+
+    def play_paused(self, file_path: str | Path) -> bool:
+        """Load a media file and immediately pause when playback begins.
+
+        Unlike play(), this method pauses in the MediaPlayerPlaying event
+        callback — before VLC's audio buffer has drained to the audio device —
+        so no audible blip occurs at the start of the file.
+
+        Args:
+            file_path: Path to the media file to load.
+
+        Returns:
+            True if playback was initiated successfully.
+        """
+        path = Path(file_path)
+        if not path.exists():
+            return False
+
+        media = self._instance.media_new(str(path))
+        self._player.set_media(media)
+        self._current_file = path
+
+        self._pause_on_play = True
         result = self._player.play()
         return result == 0
 

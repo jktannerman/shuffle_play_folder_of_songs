@@ -913,15 +913,13 @@ class SongFolderPlayerGUI:
         file_index = self._get_file_index_for_display_position(current_pos)
         file_path = self._media_files[file_index]
 
-        # Play the file, then pause after a short delay
-        self._player.play(file_path)
+        # Load the file paused — pause fires in the MediaPlayerPlaying callback
+        # before VLC's audio buffer drains to the audio device (no blip).
+        self._player.play_paused(file_path)
         self._now_playing_label.config(text=f"Now playing: {file_path.name}")
 
-        # Schedule pause after VLC has started (needs small delay)
-        # Use set_paused(True) instead of pause() to ensure it's paused (not toggled)
-        self.root.after(100, lambda: self._player.set_paused(True))
-
-        # Seek to saved position after VLC has loaded (needs more delay)
+        # Seek to saved position after VLC has loaded (needs a short delay for
+        # the player to be ready to accept a seek command)
         saved_position = self._playlist_state.playback_position_ms
         if saved_position > 0:
             self.root.after(200, lambda: self._player.set_time(saved_position))
