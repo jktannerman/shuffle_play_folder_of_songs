@@ -72,7 +72,7 @@ FEATURES
    - Loop setting
 
 6. RECENT FOLDERS
-   - Tracks up to 10 most recently opened folders
+   - Tracks up to 20 most recently opened folders
    - Dropdown for quick access to recent folders
    - Most recent folder auto-loads on startup
 

@@ -13,7 +13,7 @@ from typing import Any
 # State file location - same directory as the app
 STATE_FILE = Path(__file__).parent / "state.json"
 LOCK_FILE = Path(__file__).parent / "state.lock"
-MAX_RECENT_FOLDERS = 10
+MAX_RECENT_FOLDERS = 20
 
 
 @dataclass

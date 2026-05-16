@@ -175,6 +175,7 @@ class SongFolderPlayerGUI:
             textvariable=self._recent_var,
             state="readonly",
             width=40,
+            height=20,
         )
         self._recent_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._update_recent_combo()
