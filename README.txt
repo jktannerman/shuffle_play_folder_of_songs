@@ -1,6 +1,6 @@
 ================================================================================
                          SONG FOLDER PLAYER
-                    Audio/Video Playlist Manager
+                       Audio Playlist Manager
 ================================================================================
 
 OVERVIEW
@@ -34,10 +34,19 @@ song_folder_player/
     main.py          - Entry point, initializes GUI and state
     gui.py           - Tkinter GUI components and event handling
     player.py        - VLC media player wrapper
+    playlist.py      - Playlist navigation and state controller
     state.py         - JSON-based state persistence
     media_utils.py   - File filtering and natural sorting
     requirements.txt - Python dependencies
-    state.json       - Auto-generated state file (created on first run)
+    tests/
+        test_playlist.py   - PlaylistController: navigation, shuffle, reconciliation
+        test_state.py      - State serialization, persistence, back-compat
+        test_media_utils.py - File filtering and natural sort
+
+%APPDATA%\SongFolderPlayer\   (created on first run)
+    state.json       - Persistent application state
+    state.lock       - Instance lock file
+    app.log          - Warning and error log
 
 
 FEATURES
@@ -51,6 +60,7 @@ FEATURES
 2. SUPPORTED MEDIA FORMATS
    Audio: .mp3, .wav, .flac, .aac, .ogg, .wma, .m4a, .opus, .aiff
    Video: .mp4, .mkv, .avi, .mov, .wmv, .flv, .webm, .m4v, .mpeg, .mpg
+         (audio track only — no video output)
 
 3. NATURAL SORTING
    Files are sorted naturally, so numbered tracks appear in correct order:
@@ -147,7 +157,7 @@ FEATURES
                   Clear search and restore position (search bar)
 
 14. VLC INTEGRATION
-    - Media plays in separate VLC window
+    - Audio plays in the background (no VLC window)
     - Automatic advancement to next track on completion
     - Respects loop/stop setting at playlist end
     - Quiet mode suppresses VLC plugin cache warnings
@@ -196,8 +206,10 @@ GUI LAYOUT
 - Volume slider shows numeric value (0-100)
 
 
-STATE FILE FORMAT (state.json)
-------------------------------
+STATE FILE FORMAT
+-----------------
+Location: %APPDATA%\SongFolderPlayer\state.json
+
 {
   "recent_folders": [
     "C:\\Music\\Album1",
@@ -234,6 +246,8 @@ an existing shuffle order, and a missing current_filename resets to the first fi
 
 NOTES
 -----
+- Log file at %APPDATA%\SongFolderPlayer\app.log records warnings and errors;
+  check it if the app behaves unexpectedly (corrupt state, failed saves, etc.)
 - Buttons do not take keyboard focus (Space won't accidentally press them)
 - Arrow keys are global (override listbox navigation for seeking)
 - VLC must be installed separately; python-vlc is just the bindings
@@ -250,6 +264,14 @@ NOTES
 
 VERSION HISTORY
 ---------------
+v1.9 - May 2026
+- State and log files moved to %APPDATA%\SongFolderPlayer\ (state.json, app.log)
+- Added JSON structured logging; warnings and errors written to app.log
+- Fixed Previous button wrap-around in shuffle mode (was using straight-mode
+  length instead of shuffle order length)
+- Added pytest suite covering PlaylistController (navigation, shuffle,
+  reconciliation), state serialization/persistence, and media_utils
+
 v1.8 - May 2026
 - Extracted PlaylistController into playlist.py
 - Navigation, shuffle, reconciliation, and per-folder state are now fully

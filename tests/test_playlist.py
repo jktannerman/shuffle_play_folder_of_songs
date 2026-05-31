@@ -96,6 +96,28 @@ class TestRetreatStraight:
 # Navigation — shuffle mode                                            #
 # ------------------------------------------------------------------ #
 
+class TestAdvanceShuffle:
+    def test_advance_returns_none_at_end_without_loop(self) -> None:
+        ctrl = PlaylistController()
+        ctrl.load(
+            files("a.mp3", "b.mp3", "c.mp3"),
+            shuffle_state("a.mp3", ["a.mp3", "b.mp3", "c.mp3"], loop=False),
+        )
+        ctrl.advance()  # -> 1
+        ctrl.advance()  # -> 2
+        assert ctrl.advance() is None
+
+    def test_advance_wraps_at_end_with_loop(self) -> None:
+        ctrl = PlaylistController()
+        ctrl.load(
+            files("a.mp3", "b.mp3", "c.mp3"),
+            shuffle_state("a.mp3", ["a.mp3", "b.mp3", "c.mp3"], loop=True),
+        )
+        ctrl.advance()  # -> 1
+        ctrl.advance()  # -> 2
+        assert ctrl.advance() == 0
+
+
 class TestRetreatShuffle:
     def test_retreat_wraps_in_shuffle_mode(self) -> None:
         # Reconciliation guarantees len(shuffle_order) == len(files), so the
@@ -112,6 +134,15 @@ class TestRetreatShuffle:
         result = ctrl.retreat()
         assert result == 2  # last position in shuffle order
         assert ctrl.file_at(result) is not None
+
+    def test_retreat_stays_at_start_without_loop(self) -> None:
+        ctrl = PlaylistController()
+        ctrl.load(
+            files("a.mp3", "b.mp3", "c.mp3"),
+            shuffle_state("a.mp3", ["a.mp3", "b.mp3", "c.mp3"], loop=False),
+        )
+        assert ctrl.current_display_index == 0
+        assert ctrl.retreat() == 0
 
     def test_advance_and_retreat_cycle_in_shuffle(self) -> None:
         ctrl = PlaylistController()
