@@ -121,16 +121,6 @@ class AppState:
             self.playlists[normalized] = PlaylistState()
         return self.playlists[normalized]
 
-    def set_playlist_state(self, folder_path: str, state: PlaylistState) -> None:
-        """Set playlist state for a folder.
-
-        Args:
-            folder_path: Path to the folder.
-            state: PlaylistState to set.
-        """
-        normalized = str(Path(folder_path).resolve())
-        self.playlists[normalized] = state
-
 
 def load_state() -> AppState:
     """Load application state from disk.

@@ -217,10 +217,11 @@ class PlaylistController:
         Returns:
             New display index, or None if at the end and loop is disabled.
         """
-        if not self._files:
+        order_len = len(self._shuffle_order) if self._shuffle_order is not None else len(self._files)
+        if order_len == 0:
             return None
         next_pos = self._current_index + 1
-        if next_pos >= len(self._files):
+        if next_pos >= order_len:
             if self.loop_enabled:
                 next_pos = 0
             else:

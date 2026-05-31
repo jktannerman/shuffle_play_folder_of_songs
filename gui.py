@@ -661,17 +661,25 @@ class SongFolderPlayerGUI:
             self._search_entry.focus_set()
             self._search_entry.select_range(0, tk.END)
 
+    def _set_volume(self, volume: int) -> None:
+        """Apply a volume level to the player, state, and UI.
+
+        Args:
+            volume: Volume level from 0 to 100.
+        """
+        self._volume_var.set(volume)
+        if self._player is not None:
+            self._player.set_volume(volume)
+        self.state.volume = volume
+        self._volume_level_label.config(text=str(volume))
+
     def _on_volume_change(self, value: str) -> None:
         """Handle volume slider change.
 
         Args:
             value: New volume value as string (from Scale widget).
         """
-        volume = int(float(value))
-        if self._player is not None:
-            self._player.set_volume(volume)
-        self.state.volume = volume
-        self._volume_level_label.config(text=str(volume))
+        self._set_volume(int(float(value)))
 
     def _on_volume_click(self, event: tk.Event) -> None:
         """Handle click on volume slider to jump to position.
@@ -682,12 +690,7 @@ class SongFolderPlayerGUI:
         widget_width = event.widget.winfo_width()
         if widget_width > 0:
             position = max(0.0, min(1.0, event.x / widget_width))
-            volume = int(position * 100)
-            self._volume_var.set(volume)
-            if self._player is not None:
-                self._player.set_volume(volume)
-            self.state.volume = volume
-            self._volume_level_label.config(text=str(volume))
+            self._set_volume(int(position * 100))
 
     def _adjust_volume(self, delta: int) -> None:
         """Adjust volume by a relative amount.
@@ -695,13 +698,7 @@ class SongFolderPlayerGUI:
         Args:
             delta: Amount to adjust volume by (positive or negative).
         """
-        current = self._volume_var.get()
-        new_volume = max(0, min(100, current + delta))
-        self._volume_var.set(new_volume)
-        if self._player is not None:
-            self._player.set_volume(new_volume)
-        self.state.volume = new_volume
-        self._volume_level_label.config(text=str(new_volume))
+        self._set_volume(max(0, min(100, self._volume_var.get() + delta)))
 
     def _zoom_in(self) -> None:
         """Increase zoom level by 10%."""
@@ -814,7 +811,7 @@ class SongFolderPlayerGUI:
         Args:
             display_pos: Position in the displayed list.
         """
-        if not self._playlist.is_loaded:
+        if self._player is None or not self._playlist.is_loaded:
             return
 
         file_path = self._playlist.file_at(display_pos)
@@ -830,6 +827,8 @@ class SongFolderPlayerGUI:
 
     def _stop(self) -> None:
         """Stop playback."""
+        if self._player is None:
+            return
         self._player.stop()
         self._now_playing_label.config(text="")
 
@@ -839,7 +838,7 @@ class SongFolderPlayerGUI:
         Used on folder load so keyboard shortcuts work immediately.
         Restores the saved playback position if available.
         """
-        if not self._playlist.is_loaded:
+        if self._player is None or not self._playlist.is_loaded:
             return
 
         file_path = self._playlist.file_at(self._playlist.current_display_index)
@@ -944,11 +943,15 @@ class SongFolderPlayerGUI:
 
     def _toggle_pause(self) -> None:
         """Toggle pause/play state."""
+        if self._player is None:
+            return
         if self._player.get_current_file():
             self._player.pause()
 
     def _restart_current(self) -> None:
         """Restart the current track from the beginning."""
+        if self._player is None:
+            return
         if self._player.get_current_file():
             self._player.set_time(0)
 
@@ -958,7 +961,7 @@ class SongFolderPlayerGUI:
         Args:
             seconds: Number of seconds to seek (negative for backward).
         """
-        if not self._player.get_current_file():
+        if self._player is None or not self._player.get_current_file():
             return
 
         current_ms = self._player.get_time()
@@ -985,7 +988,7 @@ class SongFolderPlayerGUI:
         Args:
             event: The mouse event.
         """
-        if not self._player.get_current_file():
+        if self._player is None or not self._player.get_current_file():
             self._seeking = False
             return
 
