@@ -852,7 +852,7 @@ class SongFolderPlayerGUI:
 
         saved_position = self._playlist.playback_position_ms
         if saved_position > 0:
-            self.root.after(200, lambda: self._player.set_time(saved_position))
+            self.root.after(200, lambda: self._player and self._player.set_time(saved_position))
 
     def _play_next(self) -> None:
         """Play the next track."""

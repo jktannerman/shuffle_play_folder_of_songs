@@ -237,9 +237,10 @@ class PlaylistController:
         """
         if not self._files:
             return 0
+        order_len = len(self._shuffle_order) if self._shuffle_order is not None else len(self._files)
         prev_pos = self._current_index - 1
         if prev_pos < 0:
-            prev_pos = len(self._files) - 1 if self.loop_enabled else 0
+            prev_pos = order_len - 1 if self.loop_enabled else 0
         self.go_to(prev_pos)
         return prev_pos
 
