@@ -1056,7 +1056,7 @@ class SongFolderPlayerGUI:
                 if not self._seeking:
                     self._progress_var.set(0.0)
                 self._time_label.config(text="0:00 / 0:00")
-        except Exception:
+        except tk.TclError:
             logger.warning("progress update failed", exc_info=True)
 
         self.root.after(250, self._update_progress)
@@ -1076,7 +1076,7 @@ class SongFolderPlayerGUI:
                     self._playlist.playback_position_ms = current_ms
 
             self._save_state()
-        except Exception:
+        except (OSError, tk.TclError):
             logger.warning("periodic save failed", exc_info=True)
 
         self.root.after(5000, self._periodic_save)
