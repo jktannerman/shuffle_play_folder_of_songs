@@ -1,9 +1,12 @@
 """VLC media player wrapper."""
 
+import logging
 from pathlib import Path
 from typing import Callable
 
 import vlc
+
+logger = logging.getLogger(__name__)
 
 
 class VLCPlayer:
@@ -63,6 +66,7 @@ class VLCPlayer:
         """
         path = Path(file_path)
         if not path.exists():
+            logger.warning("file not found: %s", path)
             return False
 
         # Create new media and set it

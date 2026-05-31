@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import msvcrt
 import os
 import tempfile
@@ -9,10 +10,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
-# State file location - same directory as the app
-STATE_FILE = Path(__file__).parent / "state.json"
-LOCK_FILE = Path(__file__).parent / "state.lock"
+APP_DIR = Path(os.environ["APPDATA"]) / "SongFolderPlayer"
+STATE_FILE = APP_DIR / "state.json"
+LOCK_FILE = APP_DIR / "state.lock"
+LOG_FILE = APP_DIR / "app.log"
 MAX_RECENT_FOLDERS = 20
 
 
@@ -136,6 +139,7 @@ def load_state() -> AppState:
             data = json.load(f)
         return AppState.from_dict(data)
     except (json.JSONDecodeError, OSError):
+        logger.warning("state file unreadable, starting fresh", exc_info=True)
         return AppState()
 
 
@@ -147,9 +151,6 @@ def save_state(state: AppState) -> None:
     Args:
         state: AppState to save.
     """
-    # Create parent directory if needed
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-
     # Write to temporary file first
     fd, temp_path = tempfile.mkstemp(
         dir=STATE_FILE.parent,
@@ -165,7 +166,7 @@ def save_state(state: AppState) -> None:
             STATE_FILE.unlink()
         Path(temp_path).rename(STATE_FILE)
     except OSError:
-        # Clean up temp file on failure
+        logger.error("failed to save state", exc_info=True)
         try:
             os.unlink(temp_path)
         except OSError:

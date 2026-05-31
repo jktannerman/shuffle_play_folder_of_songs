@@ -1,12 +1,15 @@
 """Tkinter GUI for Song Folder Player."""
 
 import ctypes
+import logging
 import sys
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, ttk
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from .media_utils import scan_folder
 from .player import VLCPlayer
@@ -481,6 +484,7 @@ class SongFolderPlayerGUI:
         finally:
             self._loading = False
 
+        logger.debug("loaded folder: %s (%d files)", self._current_folder, len(files))
         self._update_playlist_display()
         self._save_state()
 
@@ -821,6 +825,7 @@ class SongFolderPlayerGUI:
         self._playlist.go_to(display_pos)
         self._save_state()
 
+        logger.debug("playing: %s", file_path.name)
         self._player.play(file_path)
         self._update_playlist_display()
         self._now_playing_label.config(text=f"Now playing: {file_path.name}")
@@ -1031,25 +1036,28 @@ class SongFolderPlayerGUI:
 
     def _update_progress(self) -> None:
         """Update the progress bar and time label."""
-        if self._player and self._player.get_current_file():
-            current_ms = self._player.get_time()
-            length_ms = self._player.get_length()
+        try:
+            if self._player and self._player.get_current_file():
+                current_ms = self._player.get_time()
+                length_ms = self._player.get_length()
 
-            if current_ms >= 0 and length_ms > 0:
-                if not self._seeking:
-                    position = current_ms / length_ms
-                    self._progress_var.set(position)
-                current_str = self._format_time(current_ms)
-                total_str = self._format_time(length_ms)
-                self._time_label.config(text=f"{current_str} / {total_str}")
+                if current_ms >= 0 and length_ms > 0:
+                    if not self._seeking:
+                        position = current_ms / length_ms
+                        self._progress_var.set(position)
+                    current_str = self._format_time(current_ms)
+                    total_str = self._format_time(length_ms)
+                    self._time_label.config(text=f"{current_str} / {total_str}")
+                else:
+                    if not self._seeking:
+                        self._progress_var.set(0.0)
+                    self._time_label.config(text="0:00 / 0:00")
             else:
                 if not self._seeking:
                     self._progress_var.set(0.0)
                 self._time_label.config(text="0:00 / 0:00")
-        else:
-            if not self._seeking:
-                self._progress_var.set(0.0)
-            self._time_label.config(text="0:00 / 0:00")
+        except Exception:
+            logger.warning("progress update failed", exc_info=True)
 
         self.root.after(250, self._update_progress)
 
@@ -1061,12 +1069,16 @@ class SongFolderPlayerGUI:
 
     def _periodic_save(self) -> None:
         """Periodically save playback position and volume to state."""
-        if self._player and self._playlist.is_loaded and self._player.get_current_file():
-            current_ms = self._player.get_time()
-            if current_ms >= 0:
-                self._playlist.playback_position_ms = current_ms
+        try:
+            if self._player and self._playlist.is_loaded and self._player.get_current_file():
+                current_ms = self._player.get_time()
+                if current_ms >= 0:
+                    self._playlist.playback_position_ms = current_ms
 
-        self._save_state()
+            self._save_state()
+        except Exception:
+            logger.warning("periodic save failed", exc_info=True)
+
         self.root.after(5000, self._periodic_save)
 
     def _on_close(self) -> None:

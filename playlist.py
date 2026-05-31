@@ -1,9 +1,12 @@
 """Playlist navigation and state management."""
 
+import logging
 import random
 from pathlib import Path
 
 from .state import PlaylistState
+
+logger = logging.getLogger(__name__)
 
 
 class PlaylistController:
@@ -95,6 +98,8 @@ class PlaylistController:
         if saved_name and saved_name in filename_to_index:
             current_file_index = filename_to_index[saved_name]
         else:
+            if saved_name:
+                logger.debug("current track not found, resetting: %s", saved_name)
             current_file_index = 0
 
         saved_shuffle = self._playlist_state.shuffle_order
@@ -103,9 +108,14 @@ class PlaylistController:
             present_names: set[str] = {n for n in saved_shuffle if n in filename_to_index}
             resolved: list[int] = [filename_to_index[n] for n in saved_shuffle if n in present_names]
 
+            dropped = len(saved_shuffle) - len(present_names)
+            if dropped:
+                logger.debug("reconcile: dropped %d missing file(s) from shuffle order", dropped)
+
             # Insert newly added files at random positions.
             new_indices = [i for i, f in enumerate(self._files) if f.name not in present_names]
             if new_indices:
+                logger.debug("reconcile: inserting %d new file(s) into shuffle order", len(new_indices))
                 random.shuffle(new_indices)
                 for idx in new_indices:
                     insert_pos = random.randint(0, len(resolved))
