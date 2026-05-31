@@ -205,13 +205,13 @@ STATE FILE FORMAT (state.json)
   ],
   "playlists": {
     "C:\\Music\\Album1": {
-      "current_index": 3,
-      "shuffle_order": [2, 0, 4, 1, 3],
+      "current_filename": "track4.mp3",
+      "shuffle_order": ["track4.mp3", "track1.mp3", "track3.mp3", "track5.mp3", "track2.mp3"],
       "loop_enabled": true,
       "playback_position_ms": 45230
     },
     "C:\\Music\\Album2": {
-      "current_index": 0,
+      "current_filename": "intro.mp3",
       "shuffle_order": null,
       "loop_enabled": false,
       "playback_position_ms": 0
@@ -221,11 +221,15 @@ STATE FILE FORMAT (state.json)
   "zoom_level": 1.2
 }
 
-- shuffle_order: null = straight mode, array = shuffle mode
-- current_index: position in display order (shuffle or straight)
+- current_filename: name of the current track (source of truth; looked up by name on load)
+- shuffle_order: null = straight mode, array of filenames = shuffle mode
 - playback_position_ms: position within current track (milliseconds)
 - volume: global volume level (0-100)
 - zoom_level: UI zoom multiplier (0.5-2.0, default 1.2)
+
+On load, current_filename and shuffle_order are reconciled against the actual
+files on disk: missing entries are dropped, new files are inserted randomly into
+an existing shuffle order, and a missing current_filename resets to the first file.
 
 
 NOTES
@@ -246,6 +250,15 @@ NOTES
 
 VERSION HISTORY
 ---------------
+v1.7 - May 2026
+- Playlist state now stores filenames instead of integer indices
+- Renamed files: current track resets to first file; renamed shuffle entries removed
+- Deleted files: silently removed from shuffle order on next load
+- Added files: automatically included in straight mode; inserted at random
+  positions in existing shuffle order
+- Old state.json format (integer indices) detected and gracefully discarded on
+  first run — shuffle resets to None, current track resets to first file
+
 v1.6 - April 2026
 - Window now opens immediately on startup; VLC initializes in the background
 - Playlist shows "Loading player..." indicator while VLC is starting up,

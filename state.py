@@ -20,15 +20,15 @@ MAX_RECENT_FOLDERS = 20
 class PlaylistState:
     """State for a single playlist/folder."""
 
-    current_index: int = 0
-    shuffle_order: list[int] | None = None
+    current_filename: str = ""
+    shuffle_order: list[str] | None = None  # filenames in shuffle order; None = straight mode
     loop_enabled: bool = True
     playback_position_ms: int = 0  # Position within current track
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "current_index": self.current_index,
+            "current_filename": self.current_filename,
             "shuffle_order": self.shuffle_order,
             "loop_enabled": self.loop_enabled,
             "playback_position_ms": self.playback_position_ms,
@@ -37,9 +37,14 @@ class PlaylistState:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PlaylistState":
         """Create PlaylistState from dictionary."""
+        shuffle_order = data.get("shuffle_order")
+        # Back-compat: old format stored integer indices — discard them since we
+        # cannot convert without knowing which files were present at save time.
+        if shuffle_order and isinstance(shuffle_order[0], int):
+            shuffle_order = None
         return cls(
-            current_index=data.get("current_index", 0),
-            shuffle_order=data.get("shuffle_order"),
+            current_filename=data.get("current_filename", ""),
+            shuffle_order=shuffle_order,
             loop_enabled=data.get("loop_enabled", True),
             playback_position_ms=data.get("playback_position_ms", 0),
         )

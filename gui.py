@@ -72,6 +72,10 @@ class SongFolderPlayerGUI:
         self._loading: bool = False  # Flag to prevent callbacks during load
         self._seeking: bool = False  # Flag to prevent progress updates while seeking
 
+        # Runtime playlist indices — derived from PlaylistState filenames on folder load
+        self._current_index: int = 0
+        self._shuffle_order: list[int] | None = None
+
         # Search filter state
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", self._on_search_change)
@@ -416,30 +420,23 @@ class SongFolderPlayerGUI:
         self.state.add_recent_folder(self._current_folder)
         self._playlist_state = self.state.get_playlist_state(self._current_folder)
 
+        # Reconcile saved filename-based state against the actual file list.
+        # Sets self._current_index and self._shuffle_order.
+        self._reconcile_playlist_state(self._media_files)
+
         # Update UI
         self._folder_label.config(text=f"Folder: {self._current_folder}")
         self._update_recent_combo()
 
         # Load playlist state into UI (without triggering callbacks)
-        self._shuffle_var.set(self._playlist_state.shuffle_order is not None)
+        self._shuffle_var.set(self._shuffle_order is not None)
         self._loop_var.set(self._playlist_state.loop_enabled)
         self._reshuffle_btn.config(
-            state=tk.NORMAL if self._playlist_state.shuffle_order else tk.DISABLED
+            state=tk.NORMAL if self._shuffle_order is not None else tk.DISABLED
         )
 
         # Clear loading flag
         self._loading = False
-
-        # Validate shuffle order
-        if self._playlist_state.shuffle_order is not None:
-            if len(self._playlist_state.shuffle_order) != len(self._media_files):
-                # Regenerate shuffle order if file count changed
-                self._generate_shuffle_order()
-
-        # Validate current index
-        max_index = len(self._media_files) - 1
-        if self._playlist_state.current_index > max_index:
-            self._playlist_state.current_index = 0
 
         # Update playlist display
         self._update_playlist_display()
@@ -451,6 +448,83 @@ class SongFolderPlayerGUI:
 
         # Give listbox focus so arrow keys work immediately
         self._playlist_listbox.focus_set()
+
+    def _reconcile_playlist_state(self, files: list[Path]) -> None:
+        """Resolve filename-based PlaylistState to runtime integer indices.
+
+        Handles files added, removed, or renamed since state was saved:
+        - Renamed/deleted current track: resets to first file in display order.
+        - Deleted tracks in shuffle: removed silently from shuffle order.
+        - Added tracks in shuffle mode: inserted at random positions.
+        - Added tracks in straight mode: included automatically by sort order.
+
+        Sets self._current_index and self._shuffle_order.
+
+        Args:
+            files: Current list of media files from disk, naturally sorted.
+        """
+        if not self._playlist_state or not files:
+            self._current_index = 0
+            self._shuffle_order = None
+            return
+
+        filename_to_index: dict[str, int] = {f.name: i for i, f in enumerate(files)}
+
+        # Resolve current file by name; fall back to first file if gone.
+        saved_name = self._playlist_state.current_filename
+        if saved_name and saved_name in filename_to_index:
+            current_file_index = filename_to_index[saved_name]
+        else:
+            current_file_index = 0
+
+        saved_shuffle = self._playlist_state.shuffle_order
+        if saved_shuffle is not None:
+            # Retain files still present, preserving saved order.
+            present_names: set[str] = {n for n in saved_shuffle if n in filename_to_index}
+            resolved: list[int] = [filename_to_index[n] for n in saved_shuffle if n in present_names]
+
+            # Insert newly added files at random positions.
+            new_indices = [i for i, f in enumerate(files) if f.name not in present_names]
+            if new_indices:
+                random.shuffle(new_indices)
+                for idx in new_indices:
+                    insert_pos = random.randint(0, len(resolved))
+                    resolved.insert(insert_pos, idx)
+
+            self._shuffle_order = resolved or None
+            if self._shuffle_order and current_file_index in self._shuffle_order:
+                self._current_index = self._shuffle_order.index(current_file_index)
+            else:
+                self._current_index = 0
+        else:
+            self._shuffle_order = None
+            self._current_index = current_file_index
+
+    def _sync_playlist_state(self) -> None:
+        """Write runtime integer indices back to PlaylistState as filenames before saving."""
+        if not self._playlist_state or not self._media_files:
+            return
+
+        if self._shuffle_order is not None:
+            file_index = (
+                self._shuffle_order[self._current_index]
+                if 0 <= self._current_index < len(self._shuffle_order)
+                else 0
+            )
+        else:
+            file_index = self._current_index
+
+        if 0 <= file_index < len(self._media_files):
+            self._playlist_state.current_filename = self._media_files[file_index].name
+
+        if self._shuffle_order is not None:
+            self._playlist_state.shuffle_order = [
+                self._media_files[i].name
+                for i in self._shuffle_order
+                if 0 <= i < len(self._media_files)
+            ]
+        else:
+            self._playlist_state.shuffle_order = None
 
     def _update_playlist_display(self) -> None:
         """Update the playlist listbox with optional search filtering."""
@@ -464,8 +538,8 @@ class SongFolderPlayerGUI:
         search_term = self._search_var.get().lower().strip()
 
         # Determine display order
-        if self._playlist_state and self._playlist_state.shuffle_order:
-            display_order = self._playlist_state.shuffle_order
+        if self._playlist_state and self._shuffle_order is not None:
+            display_order = self._shuffle_order
         else:
             display_order = list(range(len(self._media_files)))
 
@@ -534,13 +608,7 @@ class SongFolderPlayerGUI:
         """
         if not self._playlist_state:
             return None
-
-        if self._playlist_state.shuffle_order:
-            # In shuffle mode, current_index is the position in shuffle_order
-            return self._playlist_state.current_index
-        else:
-            # In straight mode, current_index is the actual file index
-            return self._playlist_state.current_index
+        return self._current_index
 
     def _get_file_index_for_display_position(self, display_pos: int) -> int:
         """Get the actual file index for a display position.
@@ -551,8 +619,8 @@ class SongFolderPlayerGUI:
         Returns:
             Index in self._media_files.
         """
-        if self._playlist_state and self._playlist_state.shuffle_order:
-            return self._playlist_state.shuffle_order[display_pos]
+        if self._playlist_state and self._shuffle_order is not None:
+            return self._shuffle_order[display_pos]
         return display_pos
 
     def _generate_shuffle_order(self) -> None:
@@ -561,16 +629,14 @@ class SongFolderPlayerGUI:
             return
 
         # Determine current file index
-        if self._playlist_state.shuffle_order:
-            # Already in shuffle mode - get file index from shuffle order
-            current_idx = self._playlist_state.current_index
-            if 0 <= current_idx < len(self._playlist_state.shuffle_order):
-                current_file_index = self._playlist_state.shuffle_order[current_idx]
+        if self._shuffle_order is not None:
+            current_idx = self._current_index
+            if 0 <= current_idx < len(self._shuffle_order):
+                current_file_index = self._shuffle_order[current_idx]
             else:
                 current_file_index = 0
         else:
-            # In straight mode - current_index is the file index
-            current_file_index = self._playlist_state.current_index
+            current_file_index = self._current_index
 
         # Clamp to valid range
         if current_file_index < 0 or current_file_index >= len(self._media_files):
@@ -581,8 +647,8 @@ class SongFolderPlayerGUI:
         random.shuffle(other_indices)
 
         # Put current song at top, others below
-        self._playlist_state.shuffle_order = [current_file_index] + other_indices
-        self._playlist_state.current_index = 0
+        self._shuffle_order = [current_file_index] + other_indices
+        self._current_index = 0
 
     def _on_shuffle_toggle(self) -> None:
         """Handle shuffle checkbox toggle."""
@@ -594,14 +660,12 @@ class SongFolderPlayerGUI:
             self._generate_shuffle_order()
             self._reshuffle_btn.config(state=tk.NORMAL)
         else:
-            # Disable shuffle - find current track's real index
-            if self._playlist_state.shuffle_order and self._media_files:
-                current_display_idx = self._playlist_state.current_index
-                if 0 <= current_display_idx < len(self._playlist_state.shuffle_order):
-                    real_index = self._playlist_state.shuffle_order[current_display_idx]
-                    self._playlist_state.current_index = real_index
+            # Disable shuffle — switch current_index from display position to file index
+            if self._shuffle_order is not None and self._media_files:
+                if 0 <= self._current_index < len(self._shuffle_order):
+                    self._current_index = self._shuffle_order[self._current_index]
 
-            self._playlist_state.shuffle_order = None
+            self._shuffle_order = None
             self._reshuffle_btn.config(state=tk.DISABLED)
 
         self._update_playlist_display()
@@ -884,7 +948,7 @@ class SongFolderPlayerGUI:
         file_path = self._media_files[file_index]
 
         # Update state (reset position since we're starting fresh)
-        self._playlist_state.current_index = display_pos
+        self._current_index = display_pos
         self._playlist_state.playback_position_ms = 0
         self._save_state()
 
@@ -907,7 +971,7 @@ class SongFolderPlayerGUI:
         if not self._media_files or not self._playlist_state:
             return
 
-        current_pos = self._playlist_state.current_index
+        current_pos = self._current_index
         if current_pos < 0 or current_pos >= len(self._media_files):
             return
 
@@ -930,7 +994,7 @@ class SongFolderPlayerGUI:
         if not self._playlist_state or not self._media_files:
             return
 
-        current = self._playlist_state.current_index
+        current = self._current_index
         next_pos = current + 1
 
         if next_pos >= len(self._media_files):
@@ -947,7 +1011,7 @@ class SongFolderPlayerGUI:
         if not self._playlist_state or not self._media_files:
             return
 
-        current = self._playlist_state.current_index
+        current = self._current_index
         prev_pos = current - 1
 
         if prev_pos < 0:
@@ -1144,6 +1208,7 @@ class SongFolderPlayerGUI:
 
     def _save_state(self) -> None:
         """Save current state to disk."""
+        self._sync_playlist_state()
         if self._on_state_change:
             self._on_state_change()
         else:
