@@ -21,6 +21,60 @@ DARK_FG = "#d4d4d4"        # Text color
 DARK_ACCENT = "#264f78"    # Selection highlight
 
 
+class _ToolTip:
+    """Simple hover tooltip for a tkinter widget."""
+
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self._widget = widget
+        self._text = text
+        self._tip_window: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+
+    def _show(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip_window:
+            return
+        x = self._widget.winfo_rootx() + self._widget.winfo_width()
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 2
+        tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x - 280}+{y}")
+        label = tk.Label(
+            tw, text=self._text, justify="left",
+            background="#ffffe0", foreground="#000000",
+            relief="solid", borderwidth=1, padx=4, pady=2,
+        )
+        label.pack()
+        self._tip_window = tw
+
+    def _hide(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip_window:
+            self._tip_window.destroy()
+            self._tip_window = None
+
+
+def add_readonly_indicator(root: tk.Tk) -> None:
+    """Add a READ-ONLY badge to the top-right corner of the window.
+
+    Args:
+        root: The root tkinter window.
+    """
+    badge = tk.Label(
+        root,
+        text=" READ-ONLY ",
+        font=("Segoe UI", 8, "bold"),
+        bg="#8B0000",
+        fg="white",
+    )
+    badge.place(relx=1.0, x=-6, y=6, anchor="ne")
+    badge.lift()
+    _ToolTip(
+        badge,
+        "Another instance is already running.\n"
+        "This instance will not save state changes to disk.",
+    )
+
+
 def _enable_dark_title_bar(window: tk.Tk) -> None:
     """Enable dark title bar on Windows 10/11.
 
@@ -411,32 +465,31 @@ class SongFolderPlayerGUI:
         """
         # Set loading flag to prevent toggle callbacks from firing
         self._loading = True
+        try:
+            # Scan for media files
+            self._media_files = scan_folder(folder_path)
+            self._current_folder = str(Path(folder_path).resolve())
 
-        # Scan for media files
-        self._media_files = scan_folder(folder_path)
-        self._current_folder = str(Path(folder_path).resolve())
+            # Update state
+            self.state.add_recent_folder(self._current_folder)
+            self._playlist_state = self.state.get_playlist_state(self._current_folder)
 
-        # Update state
-        self.state.add_recent_folder(self._current_folder)
-        self._playlist_state = self.state.get_playlist_state(self._current_folder)
+            # Reconcile saved filename-based state against the actual file list.
+            # Sets self._current_index and self._shuffle_order.
+            self._reconcile_playlist_state(self._media_files)
 
-        # Reconcile saved filename-based state against the actual file list.
-        # Sets self._current_index and self._shuffle_order.
-        self._reconcile_playlist_state(self._media_files)
+            # Update UI
+            self._folder_label.config(text=f"Folder: {self._current_folder}")
+            self._update_recent_combo()
 
-        # Update UI
-        self._folder_label.config(text=f"Folder: {self._current_folder}")
-        self._update_recent_combo()
-
-        # Load playlist state into UI (without triggering callbacks)
-        self._shuffle_var.set(self._shuffle_order is not None)
-        self._loop_var.set(self._playlist_state.loop_enabled)
-        self._reshuffle_btn.config(
-            state=tk.NORMAL if self._shuffle_order is not None else tk.DISABLED
-        )
-
-        # Clear loading flag
-        self._loading = False
+            # Load playlist state into UI (without triggering callbacks)
+            self._shuffle_var.set(self._shuffle_order is not None)
+            self._loop_var.set(self._playlist_state.loop_enabled)
+            self._reshuffle_btn.config(
+                state=tk.NORMAL if self._shuffle_order is not None else tk.DISABLED
+            )
+        finally:
+            self._loading = False
 
         # Update playlist display
         self._update_playlist_display()
@@ -1234,7 +1287,10 @@ class SongFolderPlayerGUI:
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        if self._player:
+        if self._player and self._playlist_state and self._player.get_current_file():
+            current_ms = self._player.get_time()
+            if current_ms >= 0:
+                self._playlist_state.playback_position_ms = current_ms
             self._player.release()
         self._save_state()
         self.root.destroy()
