@@ -1,7 +1,6 @@
 """Tkinter GUI for Song Folder Player."""
 
 import ctypes
-import random
 import sys
 import threading
 import tkinter as tk
@@ -11,7 +10,8 @@ from typing import Callable
 
 from .media_utils import scan_folder
 from .player import VLCPlayer
-from .state import AppState, PlaylistState, save_state
+from .playlist import PlaylistController
+from .state import AppState, save_state
 
 # Dark theme colors (matching multi_file_search style)
 DARK_BG = "#1e1e1e"        # Main background (darkest)
@@ -119,16 +119,14 @@ class SongFolderPlayerGUI:
         self.state = state
         self._on_state_change = on_state_change
 
-        # Current folder and files
-        self._current_folder: str | None = None
-        self._media_files: list[Path] = []
-        self._playlist_state: PlaylistState | None = None
-        self._loading: bool = False  # Flag to prevent callbacks during load
-        self._seeking: bool = False  # Flag to prevent progress updates while seeking
+        # Playlist controller — owns navigation logic and per-folder state.
+        self._playlist = PlaylistController()
 
-        # Runtime playlist indices — derived from PlaylistState filenames on folder load
-        self._current_index: int = 0
-        self._shuffle_order: list[int] | None = None
+        # Current folder path (used for state lookups and label display).
+        self._current_folder: str | None = None
+
+        self._loading: bool = False  # Suppresses toggle callbacks during folder load
+        self._seeking: bool = False  # Suppresses progress updates while scrubbing
 
         # Search filter state
         self._search_var = tk.StringVar()
@@ -416,7 +414,7 @@ class SongFolderPlayerGUI:
         self.root.bind("<Control-plus>", lambda e: self._zoom_in())
         self.root.bind("<Control-equal>", lambda e: self._zoom_in())  # Ctrl+= (no shift)
         self.root.bind("<Control-minus>", lambda e: self._zoom_out())
-        self.root.bind("<Control-0>", lambda e: self._zoom_reset())  # Reset to 100%
+        self.root.bind("<Control-0>", lambda e: self._zoom_reset())  # Reset to 120%
 
         # Search shortcuts
         self.root.bind("<Control-f>", self._on_ctrl_f)
@@ -427,7 +425,6 @@ class SongFolderPlayerGUI:
         """Update the recent folders dropdown."""
         display_names = []
         for folder in self.state.recent_folders:
-            # Show just the folder name with full path as tooltip-like display
             name = Path(folder).name
             display_names.append(f"{name} - {folder}")
         self._recent_combo["values"] = display_names
@@ -463,162 +460,63 @@ class SongFolderPlayerGUI:
         Args:
             folder_path: Path to the folder to load.
         """
-        # Set loading flag to prevent toggle callbacks from firing
         self._loading = True
         try:
-            # Scan for media files
-            self._media_files = scan_folder(folder_path)
             self._current_folder = str(Path(folder_path).resolve())
+            files = scan_folder(self._current_folder)
 
-            # Update state
             self.state.add_recent_folder(self._current_folder)
-            self._playlist_state = self.state.get_playlist_state(self._current_folder)
+            playlist_state = self.state.get_playlist_state(self._current_folder)
+            self._playlist.load(files, playlist_state)
 
-            # Reconcile saved filename-based state against the actual file list.
-            # Sets self._current_index and self._shuffle_order.
-            self._reconcile_playlist_state(self._media_files)
-
-            # Update UI
             self._folder_label.config(text=f"Folder: {self._current_folder}")
             self._update_recent_combo()
 
-            # Load playlist state into UI (without triggering callbacks)
-            self._shuffle_var.set(self._shuffle_order is not None)
-            self._loop_var.set(self._playlist_state.loop_enabled)
+            # Sync UI toggles to restored state (without triggering callbacks)
+            self._shuffle_var.set(self._playlist.shuffle_enabled)
+            self._loop_var.set(self._playlist.loop_enabled)
             self._reshuffle_btn.config(
-                state=tk.NORMAL if self._shuffle_order is not None else tk.DISABLED
+                state=tk.NORMAL if self._playlist.shuffle_enabled else tk.DISABLED
             )
         finally:
             self._loading = False
 
-        # Update playlist display
         self._update_playlist_display()
         self._save_state()
 
-        # Stop old playback and load new playlist's current track (paused)
         self._player.stop()
         self._load_current_track_paused()
 
-        # Give listbox focus so arrow keys work immediately
         self._playlist_listbox.focus_set()
-
-    def _reconcile_playlist_state(self, files: list[Path]) -> None:
-        """Resolve filename-based PlaylistState to runtime integer indices.
-
-        Handles files added, removed, or renamed since state was saved:
-        - Renamed/deleted current track: resets to first file in display order.
-        - Deleted tracks in shuffle: removed silently from shuffle order.
-        - Added tracks in shuffle mode: inserted at random positions.
-        - Added tracks in straight mode: included automatically by sort order.
-
-        Sets self._current_index and self._shuffle_order.
-
-        Args:
-            files: Current list of media files from disk, naturally sorted.
-        """
-        if not self._playlist_state or not files:
-            self._current_index = 0
-            self._shuffle_order = None
-            return
-
-        filename_to_index: dict[str, int] = {f.name: i for i, f in enumerate(files)}
-
-        # Resolve current file by name; fall back to first file if gone.
-        saved_name = self._playlist_state.current_filename
-        if saved_name and saved_name in filename_to_index:
-            current_file_index = filename_to_index[saved_name]
-        else:
-            current_file_index = 0
-
-        saved_shuffle = self._playlist_state.shuffle_order
-        if saved_shuffle is not None:
-            # Retain files still present, preserving saved order.
-            present_names: set[str] = {n for n in saved_shuffle if n in filename_to_index}
-            resolved: list[int] = [filename_to_index[n] for n in saved_shuffle if n in present_names]
-
-            # Insert newly added files at random positions.
-            new_indices = [i for i, f in enumerate(files) if f.name not in present_names]
-            if new_indices:
-                random.shuffle(new_indices)
-                for idx in new_indices:
-                    insert_pos = random.randint(0, len(resolved))
-                    resolved.insert(insert_pos, idx)
-
-            self._shuffle_order = resolved or None
-            if self._shuffle_order and current_file_index in self._shuffle_order:
-                self._current_index = self._shuffle_order.index(current_file_index)
-            else:
-                self._current_index = 0
-        else:
-            self._shuffle_order = None
-            self._current_index = current_file_index
-
-    def _sync_playlist_state(self) -> None:
-        """Write runtime integer indices back to PlaylistState as filenames before saving."""
-        if not self._playlist_state or not self._media_files:
-            return
-
-        if self._shuffle_order is not None:
-            file_index = (
-                self._shuffle_order[self._current_index]
-                if 0 <= self._current_index < len(self._shuffle_order)
-                else 0
-            )
-        else:
-            file_index = self._current_index
-
-        if 0 <= file_index < len(self._media_files):
-            self._playlist_state.current_filename = self._media_files[file_index].name
-
-        if self._shuffle_order is not None:
-            self._playlist_state.shuffle_order = [
-                self._media_files[i].name
-                for i in self._shuffle_order
-                if 0 <= i < len(self._media_files)
-            ]
-        else:
-            self._playlist_state.shuffle_order = None
 
     def _update_playlist_display(self) -> None:
         """Update the playlist listbox with optional search filtering."""
         self._playlist_listbox.delete(0, tk.END)
         self._filtered_indices.clear()
 
-        if not self._media_files:
+        files = self._playlist.files
+        if not files:
             return
 
-        # Get search term (case-insensitive)
         search_term = self._search_var.get().lower().strip()
+        display_order = self._playlist.display_order
+        current_display_idx = self._playlist.current_display_index
 
-        # Determine display order
-        if self._playlist_state and self._shuffle_order is not None:
-            display_order = self._shuffle_order
-        else:
-            display_order = list(range(len(self._media_files)))
-
-        # Get current display index for marking
-        current_display_idx = self._get_current_display_index()
-
-        # Build item strings and filtered index list, then insert in one bulk call
         items: list[str] = []
         filtered_current_pos: int | None = None
         for pos, file_index in enumerate(display_order):
-            if 0 <= file_index < len(self._media_files):
-                file = self._media_files[file_index]
+            if 0 <= file_index < len(files):
+                file = files[file_index]
 
-                # Apply search filter
                 if search_term and search_term not in file.name.lower():
                     continue
 
-                # Track position in filtered list: (original_display_pos, file_index)
                 filtered_pos = len(self._filtered_indices)
                 self._filtered_indices.append((pos, file_index))
 
-                # Show marker only if this is current track and it passes filter
                 prefix = ">> " if pos == current_display_idx else "   "
                 items.append(f"{prefix}{file.name}")
 
-                # Track filtered position of current track
                 if pos == current_display_idx:
                     filtered_current_pos = filtered_pos
 
@@ -630,15 +528,12 @@ class SongFolderPlayerGUI:
         self._playlist_listbox.selection_clear(0, tk.END)
 
         if search_term and self._search_select_first and self._filtered_indices:
-            # When searching: underline first match, highlight only if it's playing
             active_pos = 0
-            selection_pos = filtered_current_pos  # None if current track not in results
+            selection_pos = filtered_current_pos
         elif filtered_current_pos is not None:
-            # Current track visible: both underline and highlight it
             active_pos = filtered_current_pos
             selection_pos = filtered_current_pos
         elif self._filtered_indices:
-            # No current track, highlight first item
             active_pos = 0
             selection_pos = 0
         else:
@@ -650,75 +545,18 @@ class SongFolderPlayerGUI:
         if active_pos is not None:
             self._playlist_listbox.activate(active_pos)
             self._playlist_listbox.see(active_pos)
-            # Always reset horizontal scroll to leftmost position
             self._playlist_listbox.xview_moveto(0)
-
-    def _get_current_display_index(self) -> int | None:
-        """Get the current track's index in the display order.
-
-        Returns:
-            Display index of current track, or None if no track.
-        """
-        if not self._playlist_state:
-            return None
-        return self._current_index
-
-    def _get_file_index_for_display_position(self, display_pos: int) -> int:
-        """Get the actual file index for a display position.
-
-        Args:
-            display_pos: Position in the displayed list.
-
-        Returns:
-            Index in self._media_files.
-        """
-        if self._playlist_state and self._shuffle_order is not None:
-            return self._shuffle_order[display_pos]
-        return display_pos
-
-    def _generate_shuffle_order(self) -> None:
-        """Generate a new shuffle order with current song at top."""
-        if not self._playlist_state or not self._media_files:
-            return
-
-        # Determine current file index
-        if self._shuffle_order is not None:
-            current_idx = self._current_index
-            if 0 <= current_idx < len(self._shuffle_order):
-                current_file_index = self._shuffle_order[current_idx]
-            else:
-                current_file_index = 0
-        else:
-            current_file_index = self._current_index
-
-        # Clamp to valid range
-        if current_file_index < 0 or current_file_index >= len(self._media_files):
-            current_file_index = 0
-
-        # Shuffle all other indices
-        other_indices = [i for i in range(len(self._media_files)) if i != current_file_index]
-        random.shuffle(other_indices)
-
-        # Put current song at top, others below
-        self._shuffle_order = [current_file_index] + other_indices
-        self._current_index = 0
 
     def _on_shuffle_toggle(self) -> None:
         """Handle shuffle checkbox toggle."""
-        if self._loading or not self._playlist_state:
+        if self._loading or not self._playlist.is_loaded:
             return
 
         if self._shuffle_var.get():
-            # Enable shuffle
-            self._generate_shuffle_order()
+            self._playlist.enable_shuffle()
             self._reshuffle_btn.config(state=tk.NORMAL)
         else:
-            # Disable shuffle — switch current_index from display position to file index
-            if self._shuffle_order is not None and self._media_files:
-                if 0 <= self._current_index < len(self._shuffle_order):
-                    self._current_index = self._shuffle_order[self._current_index]
-
-            self._shuffle_order = None
+            self._playlist.disable_shuffle()
             self._reshuffle_btn.config(state=tk.DISABLED)
 
         self._update_playlist_display()
@@ -726,10 +564,10 @@ class SongFolderPlayerGUI:
 
     def _on_reshuffle(self) -> None:
         """Handle reshuffle button click."""
-        if not self._playlist_state or not self._shuffle_var.get():
+        if not self._playlist.is_loaded or not self._shuffle_var.get():
             return
 
-        self._generate_shuffle_order()
+        self._playlist.reshuffle()
         self._update_playlist_display()
         self._save_state()
 
@@ -737,8 +575,8 @@ class SongFolderPlayerGUI:
         """Handle loop checkbox toggle."""
         if self._loading:
             return
-        if self._playlist_state:
-            self._playlist_state.loop_enabled = self._loop_var.get()
+        if self._playlist.is_loaded:
+            self._playlist.loop_enabled = self._loop_var.get()
             self._save_state()
 
     def _on_search_change(self, *args: object) -> None:
@@ -749,7 +587,6 @@ class SongFolderPlayerGUI:
         """
         search_term = self._search_var.get().strip()
 
-        # Store active position when starting a new search
         if search_term and self._pre_search_active_pos is None:
             try:
                 self._pre_search_active_pos = self._playlist_listbox.index(tk.ACTIVE)
@@ -758,7 +595,6 @@ class SongFolderPlayerGUI:
         elif not search_term:
             self._pre_search_active_pos = None
 
-        # When actively searching, highlight the first match
         self._search_select_first = bool(search_term)
         self._update_playlist_display()
 
@@ -771,7 +607,6 @@ class SongFolderPlayerGUI:
     def _on_clear_checkbox(self) -> None:
         """Handle clear checkbox click - clear search and re-check."""
         self._clear_search()
-        # Re-check the checkbox
         self._search_clear_var.set(True)
 
     def _on_ctrl_f(self, event: tk.Event) -> str:
@@ -815,7 +650,6 @@ class SongFolderPlayerGUI:
         search_active = bool(self._search_var.get().strip())
 
         if focused == self._search_entry:
-            # In search bar: clear search and restore previous position
             saved_pos = self._pre_search_active_pos
             self._clear_search()
             if saved_pos is not None and self._filtered_indices:
@@ -823,7 +657,6 @@ class SongFolderPlayerGUI:
                 self._playlist_listbox.see(saved_pos)
             self._playlist_listbox.focus_set()
         elif focused == self._playlist_listbox and search_active:
-            # In listbox during search: return to search bar
             self._search_entry.focus_set()
             self._search_entry.select_range(0, tk.END)
 
@@ -883,36 +716,29 @@ class SongFolderPlayerGUI:
 
     def _apply_zoom(self) -> None:
         """Apply current zoom level to all fonts."""
-        # Save to state
         self.state.zoom_level = self._zoom_level
 
         playlist_size = int(self._base_font_sizes["playlist"] * self._zoom_level)
         ui_size = int(self._base_font_sizes["ui"] * self._zoom_level)
 
-        # Update playlist listbox font (tk widget)
         self._playlist_listbox.config(font=("Consolas", playlist_size))
 
-        # Update ttk widget fonts via styles
         self._style.configure("TButton", font=("TkDefaultFont", ui_size))
         self._style.configure("TLabel", font=("TkDefaultFont", ui_size))
         self._style.configure("TCheckbutton", font=("TkDefaultFont", ui_size))
         self._style.configure("TCombobox", font=("TkDefaultFont", ui_size))
         self._style.configure("TEntry", font=("TkDefaultFont", ui_size))
 
-        # Update specific label fonts (these override the style)
         self._volume_level_label.config(font=("Consolas", ui_size))
         self._now_playing_label.config(font=("Arial", ui_size))
         self._time_label.config(font=("Consolas", ui_size))
 
-        # Update combobox dropdown font
         self.root.option_add("*TCombobox*Listbox.font", ("TkDefaultFont", ui_size))
 
     def _apply_dark_theme(self) -> None:
         """Apply dark theme to all widgets."""
-        # Use 'clam' theme which allows full color customization
         self._style.theme_use("clam")
 
-        # Configure ttk styles
         self._style.configure(".", background=DARK_BG_ALT, foreground=DARK_FG)
         self._style.configure("TFrame", background=DARK_BG_ALT)
         self._style.configure("TLabel", background=DARK_BG_ALT, foreground=DARK_FG)
@@ -938,7 +764,6 @@ class SongFolderPlayerGUI:
         )
         self._style.configure("TEntry", fieldbackground=DARK_BG_WIDGET, foreground=DARK_FG)
 
-        # Scrollbar styling
         self._style.configure(
             "TScrollbar",
             background="#5a5a5a",
@@ -951,7 +776,6 @@ class SongFolderPlayerGUI:
             background=[("active", "#6a6a6a"), ("pressed", "#7a7a7a")],
         )
 
-        # Scale (slider) styling to match scrollbar
         self._style.configure(
             "Horizontal.TScale",
             background=DARK_BG_ALT,
@@ -964,15 +788,12 @@ class SongFolderPlayerGUI:
             background=[("active", "#6a6a6a")],
         )
 
-        # Configure root window background
         self.root.configure(bg=DARK_BG_ALT)
-
-        # Enable dark title bar on Windows
         _enable_dark_title_bar(self.root)
 
     def _play_selected(self) -> None:
         """Play the active (underlined) track in the listbox."""
-        if not self._media_files:
+        if not self._playlist.files:
             return
 
         try:
@@ -980,7 +801,6 @@ class SongFolderPlayerGUI:
         except tk.TclError:
             return
 
-        # Map filtered listbox position to original display position
         if filtered_pos < len(self._filtered_indices):
             original_display_pos, _ = self._filtered_indices[filtered_pos]
             self._play_at_display_position(original_display_pos)
@@ -991,21 +811,16 @@ class SongFolderPlayerGUI:
         Args:
             display_pos: Position in the displayed list.
         """
-        if not self._media_files or not self._playlist_state:
+        if not self._playlist.is_loaded:
             return
 
-        if display_pos < 0 or display_pos >= len(self._media_files):
+        file_path = self._playlist.file_at(display_pos)
+        if file_path is None:
             return
 
-        file_index = self._get_file_index_for_display_position(display_pos)
-        file_path = self._media_files[file_index]
-
-        # Update state (reset position since we're starting fresh)
-        self._current_index = display_pos
-        self._playlist_state.playback_position_ms = 0
+        self._playlist.go_to(display_pos)
         self._save_state()
 
-        # Play the file
         self._player.play(file_path)
         self._update_playlist_display()
         self._now_playing_label.config(text=f"Now playing: {file_path.name}")
@@ -1018,62 +833,42 @@ class SongFolderPlayerGUI:
     def _load_current_track_paused(self) -> None:
         """Load the current track into VLC but start paused.
 
-        This is used on startup so keyboard shortcuts work immediately.
+        Used on folder load so keyboard shortcuts work immediately.
         Restores the saved playback position if available.
         """
-        if not self._media_files or not self._playlist_state:
+        if not self._playlist.is_loaded:
             return
 
-        current_pos = self._current_index
-        if current_pos < 0 or current_pos >= len(self._media_files):
+        file_path = self._playlist.file_at(self._playlist.current_display_index)
+        if file_path is None:
             return
 
-        file_index = self._get_file_index_for_display_position(current_pos)
-        file_path = self._media_files[file_index]
-
-        # Load the file paused — pause fires in the MediaPlayerPlaying callback
-        # before VLC's audio buffer drains to the audio device (no blip).
+        # Pause fires in the MediaPlayerPlaying callback before VLC's audio
+        # buffer drains to the audio device — no audible blip.
         self._player.play_paused(file_path)
         self._now_playing_label.config(text=f"Now playing: {file_path.name}")
 
-        # Seek to saved position after VLC has loaded (needs a short delay for
-        # the player to be ready to accept a seek command)
-        saved_position = self._playlist_state.playback_position_ms
+        saved_position = self._playlist.playback_position_ms
         if saved_position > 0:
             self.root.after(200, lambda: self._player.set_time(saved_position))
 
     def _play_next(self) -> None:
         """Play the next track."""
-        if not self._playlist_state or not self._media_files:
+        if not self._playlist.is_loaded:
             return
 
-        current = self._current_index
-        next_pos = current + 1
-
-        if next_pos >= len(self._media_files):
-            if self._playlist_state.loop_enabled:
-                next_pos = 0
-            else:
-                self._stop()
-                return
-
-        self._play_at_display_position(next_pos)
+        next_pos = self._playlist.advance()
+        if next_pos is None:
+            self._stop()
+        else:
+            self._play_at_display_position(next_pos)
 
     def _play_previous(self) -> None:
         """Play the previous track."""
-        if not self._playlist_state or not self._media_files:
+        if not self._playlist.is_loaded:
             return
 
-        current = self._current_index
-        prev_pos = current - 1
-
-        if prev_pos < 0:
-            if self._playlist_state.loop_enabled:
-                prev_pos = len(self._media_files) - 1
-            else:
-                prev_pos = 0
-
-        self._play_at_display_position(prev_pos)
+        self._play_at_display_position(self._playlist.retreat())
 
     def _on_track_end(self) -> None:
         """Handle track end event from VLC.
@@ -1091,7 +886,6 @@ class SongFolderPlayerGUI:
         Returns:
             "break" to prevent event propagation, or None to allow normal handling.
         """
-        # Allow typing in search entry
         if self.root.focus_get() == self._search_entry:
             return None
         self._toggle_pause()
@@ -1171,7 +965,6 @@ class SongFolderPlayerGUI:
             return
 
         new_ms = current_ms + (seconds * 1000)
-        # Clamp to valid range
         new_ms = max(0, min(new_ms, length_ms))
         self._player.set_time(new_ms)
 
@@ -1204,7 +997,6 @@ class SongFolderPlayerGUI:
                 position = min(position, 0.999)
                 new_ms = int(position * length_ms)
                 self._player.set_time(new_ms)
-                # Update the variable to match
                 self._progress_var.set(position)
 
         self._seeking = False
@@ -1238,12 +1030,9 @@ class SongFolderPlayerGUI:
             length_ms = self._player.get_length()
 
             if current_ms >= 0 and length_ms > 0:
-                # Update progress bar (skip if user is seeking)
                 if not self._seeking:
                     position = current_ms / length_ms
                     self._progress_var.set(position)
-
-                # Update time label
                 current_str = self._format_time(current_ms)
                 total_str = self._format_time(length_ms)
                 self._time_label.config(text=f"{current_str} / {total_str}")
@@ -1256,12 +1045,11 @@ class SongFolderPlayerGUI:
                 self._progress_var.set(0.0)
             self._time_label.config(text="0:00 / 0:00")
 
-        # Schedule next update
         self.root.after(250, self._update_progress)
 
     def _save_state(self) -> None:
         """Save current state to disk."""
-        self._sync_playlist_state()
+        self._playlist.sync_to_state()
         if self._on_state_change:
             self._on_state_change()
         else:
@@ -1273,24 +1061,20 @@ class SongFolderPlayerGUI:
 
     def _periodic_save(self) -> None:
         """Periodically save playback position and volume to state."""
-        # Update playback position from player
-        if self._player and self._playlist_state and self._player.get_current_file():
+        if self._player and self._playlist.is_loaded and self._player.get_current_file():
             current_ms = self._player.get_time()
             if current_ms >= 0:
-                self._playlist_state.playback_position_ms = current_ms
+                self._playlist.playback_position_ms = current_ms
 
-        # Save state to disk
         self._save_state()
-
-        # Schedule next save (every 5 seconds)
         self.root.after(5000, self._periodic_save)
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        if self._player and self._playlist_state and self._player.get_current_file():
+        if self._player and self._playlist.is_loaded and self._player.get_current_file():
             current_ms = self._player.get_time()
             if current_ms >= 0:
-                self._playlist_state.playback_position_ms = current_ms
+                self._playlist.playback_position_ms = current_ms
             self._player.release()
         self._save_state()
         self.root.destroy()
