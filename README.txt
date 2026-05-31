@@ -255,7 +255,6 @@ v1.8 - May 2026
 - Navigation, shuffle, reconciliation, and per-folder state are now fully
   separate from the GUI — PlaylistController has no tkinter dependency
 - gui.py delegates all "what plays next" decisions to the controller
-- gui.py drops from ~1200 lines to ~650 lines
 
 v1.7 - May 2026
 - Playlist state now stores filenames instead of integer indices

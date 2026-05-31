@@ -11,7 +11,7 @@ from typing import Callable
 from .media_utils import scan_folder
 from .player import VLCPlayer
 from .playlist import PlaylistController
-from .state import AppState, save_state
+from .state import AppState
 
 # Dark theme colors (matching multi_file_search style)
 DARK_BG = "#1e1e1e"        # Main background (darkest)
@@ -131,8 +131,8 @@ class SongFolderPlayerGUI:
         # Search filter state
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", self._on_search_change)
-        # Maps filtered listbox pos -> (original_display_pos, file_index)
-        self._filtered_indices: list[tuple[int, int]] = []
+        # Maps filtered listbox pos -> original display pos
+        self._filtered_indices: list[int] = []
         # When True, search results highlight first match; when False, highlight current track
         self._search_select_first: bool = False
         # Stores active item position before search began (for restore on Esc)
@@ -169,7 +169,7 @@ class SongFolderPlayerGUI:
         self._update_progress()
 
         # Start periodic save timer (every 5 seconds)
-        self._start_periodic_save()
+        self._periodic_save()
 
         # Defer player creation and folder load until after window is drawn
         self.root.after(0, self._init_player)
@@ -484,8 +484,9 @@ class SongFolderPlayerGUI:
         self._update_playlist_display()
         self._save_state()
 
-        self._player.stop()
-        self._load_current_track_paused()
+        if self._player is not None:
+            self._player.stop()
+            self._load_current_track_paused()
 
         self._playlist_listbox.focus_set()
 
@@ -512,7 +513,7 @@ class SongFolderPlayerGUI:
                     continue
 
                 filtered_pos = len(self._filtered_indices)
-                self._filtered_indices.append((pos, file_index))
+                self._filtered_indices.append(pos)
 
                 prefix = ">> " if pos == current_display_idx else "   "
                 items.append(f"{prefix}{file.name}")
@@ -667,7 +668,8 @@ class SongFolderPlayerGUI:
             value: New volume value as string (from Scale widget).
         """
         volume = int(float(value))
-        self._player.set_volume(volume)
+        if self._player is not None:
+            self._player.set_volume(volume)
         self.state.volume = volume
         self._volume_level_label.config(text=str(volume))
 
@@ -682,7 +684,8 @@ class SongFolderPlayerGUI:
             position = max(0.0, min(1.0, event.x / widget_width))
             volume = int(position * 100)
             self._volume_var.set(volume)
-            self._player.set_volume(volume)
+            if self._player is not None:
+                self._player.set_volume(volume)
             self.state.volume = volume
             self._volume_level_label.config(text=str(volume))
 
@@ -695,7 +698,8 @@ class SongFolderPlayerGUI:
         current = self._volume_var.get()
         new_volume = max(0, min(100, current + delta))
         self._volume_var.set(new_volume)
-        self._player.set_volume(new_volume)
+        if self._player is not None:
+            self._player.set_volume(new_volume)
         self.state.volume = new_volume
         self._volume_level_label.config(text=str(new_volume))
 
@@ -802,8 +806,7 @@ class SongFolderPlayerGUI:
             return
 
         if filtered_pos < len(self._filtered_indices):
-            original_display_pos, _ = self._filtered_indices[filtered_pos]
-            self._play_at_display_position(original_display_pos)
+            self._play_at_display_position(self._filtered_indices[filtered_pos])
 
     def _play_at_display_position(self, display_pos: int) -> None:
         """Play track at the given display position.
@@ -1052,12 +1055,6 @@ class SongFolderPlayerGUI:
         self._playlist.sync_to_state()
         if self._on_state_change:
             self._on_state_change()
-        else:
-            save_state(self.state)
-
-    def _start_periodic_save(self) -> None:
-        """Start the periodic save timer."""
-        self._periodic_save()
 
     def _periodic_save(self) -> None:
         """Periodically save playback position and volume to state."""
@@ -1071,10 +1068,11 @@ class SongFolderPlayerGUI:
 
     def _on_close(self) -> None:
         """Handle window close event."""
-        if self._player and self._playlist.is_loaded and self._player.get_current_file():
-            current_ms = self._player.get_time()
-            if current_ms >= 0:
-                self._playlist.playback_position_ms = current_ms
+        if self._player:
+            if self._playlist.is_loaded and self._player.get_current_file():
+                current_ms = self._player.get_time()
+                if current_ms >= 0:
+                    self._playlist.playback_position_ms = current_ms
             self._player.release()
         self._save_state()
         self.root.destroy()
